@@ -1,4 +1,4 @@
-<!DOCTYPE html> 
+<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -1007,17 +1007,23 @@ async function loadCreditHistory() {
 
 // ── LISTING SAVE ──
 async function saveListing(publish) {
+  if (!currentUser) { showToast('Please sign in first.'); return; }
+
   const services = [...document.querySelectorAll('#editServices input:checked')].map(c => c.value);
   const coverage = document.getElementById('editCoverage').value.split(',').map(s => s.trim()).filter(Boolean);
   const bizName = document.getElementById('editBizName').value.trim();
-  const slug = bizName.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+
+  if (!bizName) { showToast('Please enter your business name.'); return; }
+
+  const slug = bizName.toLowerCase().replace(/[^a-z0-9]+/g, '-') + '-' + currentUser.id.slice(0,6);
 
   // Update business
-  await sb.from('businesses').update({
+  const { error: bizError } = await sb.from('businesses').update({
     business_name: bizName,
     phone: document.getElementById('editPhone').value,
     postcode: document.getElementById('editPostcode').value,
   }).eq('id', currentUser.id);
+  if (bizError) { showToast('Error saving business details.'); console.error(bizError); return; }
 
   // Collect any already-uploaded photo URLs from previews
   const existingUrls = [...document.querySelectorAll('#editPhotoPreviews .photo-preview')]
@@ -1032,10 +1038,20 @@ async function saveListing(publish) {
     is_published: publish, updated_at: new Date().toISOString()
   };
 
+  let saveError;
   if (currentListing) {
-    await sb.from('listings').update(listingData).eq('id', currentListing.id);
+    const { error } = await sb.from('listings').update(listingData).eq('id', currentListing.id);
+    saveError = error;
   } else {
-    await sb.from('listings').insert(listingData);
+    const { data: newListing, error } = await sb.from('listings').insert(listingData).select().single();
+    saveError = error;
+    if (newListing) currentListing = newListing;
+  }
+
+  if (saveError) { 
+    showToast('Error saving listing: ' + saveError.message); 
+    console.error(saveError); 
+    return; 
   }
 
   showToast(publish ? '✓ Listing published!' : '✓ Draft saved.');
