@@ -838,7 +838,17 @@ async function handleLogin() {
   if (!email || !password) { showAuthError('Please enter your email and password.'); return; }
 
   const { data, error } = await sb.auth.signInWithPassword({ email, password });
-  if (error) { showAuthError('Incorrect email or password.'); return; }
+  if (error) {
+    const msg = (error.message || '').toLowerCase();
+    if (msg.includes('not confirmed') || msg.includes('confirm')) {
+      showAuthError('Your email address has not been confirmed yet. Please check your inbox for the confirmation link, or contact support to verify your account.');
+    } else if (msg.includes('invalid login')) {
+      showAuthError('Incorrect email or password.');
+    } else {
+      showAuthError(error.message || 'Unable to sign in. Please try again.');
+    }
+    return;
+  }
 
   currentUser = data.user;
   await loadBusinessData();
