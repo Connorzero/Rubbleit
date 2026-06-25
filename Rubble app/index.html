@@ -1,0 +1,2102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="version" content="v2.1">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Rubble — Find Waste Removal Near You</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2">  function toggleMobileNav() {
+    const nav = document.getElementById('mobileNav');
+    const btn = document.getElementById('hamburger');
+    nav.classList.toggle('open');
+    btn.classList.toggle('open');
+  }
+
+  // ── SUPABASE CONFIG ──
+  const SUPA_URL = 'https://bfekeamjuiytiiexbflt.supabase.co';
+  const SUPA_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJmZWtlYW1qdWl5dGlpZXhiZmx0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE2ODYwOTksImV4cCI6MjA5NzI2MjA5OX0.IrDAec0wXuuuWT7_ORGwSHtEAN-qnMz8WMr24rY5OKQ';
+  let sbClient = null;
+  let allDbListings = [];
+
+  // ── LOAD LISTINGS FROM SUPABASE ──
+  async function loadListingsFromDB() {
+    try {
+      if (!sbClient) sbClient = supabase.createClient(SUPA_URL, SUPA_KEY);
+    } catch(e) {
+      console.error('Supabase init failed:', e);
+      return;
+    }
+    const { data, error } = await sbClient
+      .from('listings')
+      .select(`*, businesses(business_name, phone, postcode, is_featured)`)
+      .eq('is_published', true)
+      .order('created_at', { ascending: false });
+
+    if (error) { console.error('Listings load error:', error); return; }
+
+    allDbListings = (data || []).map(l => ({
+      id: l.id,
+      bizId: l.business_id,
+      name: l.businesses?.business_name || 'Unnamed Business',
+      phone: l.businesses?.phone || '',
+      postcode: l.businesses?.postcode || '',
+      description: l.description || '',
+      services: l.services || [],
+      coverage: l.coverage_areas || [],
+      photos: l.photo_urls || [],
+      rating: l.rating || 0,
+      reviewCount: l.review_count || 0,
+      isFeatured: l.businesses?.is_featured || false,
+      slug: l.slug || l.id,
+    }));
+
+    renderFeaturedCards();
+    renderResultsList(allDbListings);
+    updateResultsCount(allDbListings.length);
+  }
+
+  function getInitialsFromName(name) {
+    return name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0,2);
+  }
+
+  function getBgColor(name) {
+    const colors = ['var(--green)','#4A6FA5','#7B6FA5','#A05C3A','#2D7D6F'];
+    let hash = 0;
+    for (let c of name) hash = c.charCodeAt(0) + ((hash << 5) - hash);
+    return colors[Math.abs(hash) % colors.length];
+  }
+
+  function renderPhotoOrInitials(listing, size = 52) {
+    if (listing.photos && listing.photos.length > 0) {
+      return `<div style="width:${size}px;height:${size}px;border-radius:${size > 60 ? 12 : 8}px;overflow:hidden;flex-shrink:0;">
+        <img src="${listing.photos[0]}" style="width:100%;height:100%;object-fit:cover;" alt="${listing.name}">
+      </div>`;
+    }
+    const initials = getInitialsFromName(listing.name);
+    const bg = getBgColor(listing.name);
+    return `<div style="width:${size}px;height:${size}px;border-radius:${size > 60 ? 12 : 8}px;background:${bg};display:flex;align-items:center;justify-content:center;color:white;font-weight:700;font-size:${size > 60 ? 24 : 16}px;flex-shrink:0;">${initials}</div>`;
+  }
+
+  function starsHtml(rating) {
+    const full = Math.floor(rating);
+    const half = rating % 1 >= 0.5;
+    return '★'.repeat(full) + (half ? '½' : '') + '☆'.repeat(5 - full - (half ? 1 : 0));
+  }
+
+  // ── FEATURED CARDS (homepage) ──
+  function renderFeaturedCards() {
+    const grid = document.getElementById('featuredListingsGrid');
+    if (!grid) return;
+
+    const featured = allDbListings.filter(l => l.isFeatured).slice(0, 3);
+    const toShow = featured.length > 0 ? featured : allDbListings.slice(0, 3);
+
+    if (toShow.length === 0) {
+      grid.innerHTML = `<div style="grid-column:1/-1;text-align:center;padding:32px;color:var(--mid);">
+        No listings yet — <a onclick="showPage('signup')" style="color:var(--green);cursor:pointer;font-weight:600;">be the first to list your business →</a>
+      </div>`;
+      return;
+    }
+
+    grid.innerHTML = toShow.map(l => `
+      <div class="listing-card ${l.isFeatured ? 'featured-card' : ''}" onclick="showListingById('${l.id}')">
+        ${l.isFeatured ? '<div class="featured-flag">⭐ Featured</div>' : ''}
+        ${renderPhotoOrInitials(l, 44)}
+        <div class="biz-name" style="margin-top:10px;">${l.name}</div>
+        <div class="biz-location">📍 ${l.coverage.slice(0,2).join(', ') || l.postcode || 'Local area'}</div>
+        <div class="biz-tags">
+          ${l.services.slice(0,3).map(s => `<span class="tag">${s}</span>`).join('')}
+        </div>
+        ${l.rating > 0 ? `<div class="rating"><span class="stars">${starsHtml(l.rating)}</span><strong>${l.rating}</strong><span class="rating-count">(${l.reviewCount} reviews)</span></div>` : '<div style="font-size:12px;color:var(--mid);">No reviews yet</div>'}
+        <div class="card-actions">
+          <button class="btn-outline" onclick="event.stopPropagation(); openContactForListing('${l.id}')">Contact</button>
+          <button class="btn-sm" onclick="event.stopPropagation(); showListingById('${l.id}')">View listing</button>
+        </div>
+      </div>`).join('');
+  }
+
+  // ── RESULTS LIST ──
+  function renderResultsList(listings) {
+    const container = document.getElementById('dynamicResultsList');
+    if (!container) return;
+
+    if (listings.length === 0) {
+      container.innerHTML = `
+        <div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:40px;text-align:center;color:var(--mid);">
+          <div style="font-size:32px;margin-bottom:12px;">🔍</div>
+          <div style="font-weight:600;margin-bottom:6px;">No removalists found</div>
+          <div style="font-size:14px;margin-bottom:20px;">Try adjusting your filters or post a job and let businesses come to you.</div>
+          <button class="btn-primary" onclick="openModal('postJobModal')">Post your job — it's free</button>
+        </div>`;
+      return;
+    }
+
+    const sorted = [...listings].sort((a,b) => (b.isFeatured ? 1 : 0) - (a.isFeatured ? 1 : 0));
+
+    container.innerHTML = sorted.map(l => `
+      <div class="result-item ${l.isFeatured ? 'is-featured' : ''}" onclick="showListingById('${l.id}')">
+        ${l.isFeatured ? '<div class="featured-flag">⭐ Featured</div>' : ''}
+        ${renderPhotoOrInitials(l, 52)}
+        <div class="result-body">
+          <div class="biz-name">${l.name}</div>
+          <div class="biz-location" style="margin-bottom:6px;">📍 ${l.coverage.slice(0,3).join(', ') || l.postcode || 'Local area'}</div>
+          ${l.rating > 0 ? `<div class="rating" style="margin-bottom:10px;"><span class="stars">${starsHtml(l.rating)}</span><strong>${l.rating}</strong><span class="rating-count">(${l.reviewCount} reviews)</span></div>` : ''}
+          <div class="result-desc">${l.description || ''}</div>
+          <div class="biz-tags">${l.services.map(s=>`<span class="tag">${s}</span>`).join('')}</div>
+          <div class="result-actions" style="margin-top:16px;">
+            <button class="btn-outline" onclick="event.stopPropagation(); openContactForListing('${l.id}')">Contact</button>
+            <button class="btn-sm" onclick="event.stopPropagation(); showListingById('${l.id}')">View listing</button>
+          </div>
+        </div>
+      </div>`).join('') + `
+      <div style="background:var(--sage-light);border:1.5px dashed var(--sage);border-radius:12px;padding:24px;text-align:center;margin-bottom:16px;">
+        <div style="font-size:20px;margin-bottom:8px;">📋</div>
+        <h4 style="font-size:16px;font-weight:600;margin-bottom:6px;">Don't want to call around?</h4>
+        <p style="font-size:14px;color:var(--mid);margin-bottom:16px;">Post your job once and receive quotes from multiple removalists.</p>
+        <button class="btn-primary" onclick="openModal('postJobModal')">Post your job — it's free</button>
+      </div>`;
+  }
+
+  function updateResultsCount(count) {
+    const el = document.getElementById('resultsHeading');
+    if (el) el.textContent = count + ' removalists near you';
+  }
+
+  // ── DYNAMIC LISTING PAGE ──
+  async function showListingById(listingId) {
+    const listing = allDbListings.find(l => l.id === listingId);
+    if (!listing) return;
+
+    // Populate listing page
+    document.getElementById('listingBizName').textContent = listing.name;
+    document.getElementById('listingTitle').textContent = listing.name;
+    document.getElementById('listingLocation').textContent = '📍 ' + (listing.coverage.slice(0,3).join(', ') || listing.postcode || 'Local area');
+    document.getElementById('listingAbout').textContent = listing.description || '';
+
+    // Logo / photo
+    const logoEl = document.getElementById('listingLogo');
+    if (listing.photos && listing.photos.length > 0) {
+      logoEl.innerHTML = `<img src="${listing.photos[0]}" style="width:100%;height:100%;object-fit:cover;border-radius:12px;">`;
+      logoEl.style.background = 'none';
+    } else {
+      logoEl.textContent = getInitialsFromName(listing.name);
+      logoEl.style.background = getBgColor(listing.name);
+    }
+
+    // Gallery
+    const gallery = document.querySelector('.listing-gallery');
+    if (gallery && listing.photos && listing.photos.length > 0) {
+      const main = listing.photos[0];
+      const side1 = listing.photos[1] || null;
+      const side2 = listing.photos[2] || null;
+      gallery.innerHTML = `
+        <div class="gallery-main">
+          <div style="height:100%;border-radius:0;overflow:hidden;">
+            <img src="${main}" style="width:100%;height:100%;object-fit:cover;" alt="Photo">
+          </div>
+        </div>
+        <div class="gallery-side">
+          ${side1 ? `<div style="overflow:hidden;"><img src="${side1}" style="width:100%;height:100%;object-fit:cover;" alt="Photo"></div>` : '<div class="gallery-placeholder gallery-small"><div class="gallery-label">📷</div></div>'}
+          ${side2 ? `<div style="overflow:hidden;position:relative;"><img src="${side2}" style="width:100%;height:100%;object-fit:cover;" alt="Photo">${listing.photos.length > 3 ? `<div class="gallery-overlay">View all photos (${listing.photos.length})</div>` : ''}</div>` : '<div class="gallery-placeholder gallery-small"><div class="gallery-label">📷</div></div>'}
+        </div>`;
+    }
+
+    // Services
+    const svcEl = document.getElementById('listingServices');
+    svcEl.innerHTML = listing.services.map(s => `<span class="service-tag">${s}</span>`).join('');
+
+    // Coverage
+    const covEl = document.querySelector('.coverage-tags');
+    if (covEl) covEl.innerHTML = listing.coverage.map(c => `<span class="service-tag">${c}</span>`).join('');
+
+    // Store current listing for contact modal
+    window._currentListingName = listing.name;
+    window._currentListingId = listing.id;
+
+    showPage('listing');
+  }
+
+  function openContactForListing(listingId) {
+    const listing = allDbListings.find(l => l.id === listingId);
+    if (listing) openModal('contactModal', listing.name);
+  }
+
+  // ── FILTER + SORT (wired to live data) ──
+  function renderResults() {
+    const sortVal = document.getElementById('sortSelect')?.value || 'Relevance';
+    const activeFilters = [...document.querySelectorAll('.filter-option input:checked')]
+      .map(c => c.nextElementSibling?.textContent?.trim().toLowerCase());
+
+    let results = [...allDbListings];
+
+    if (activeFilters.length > 0) {
+      results = results.filter(l =>
+        activeFilters.some(f => l.services.some(s => s.toLowerCase().includes(f)))
+      );
+    }
+
+    if (sortVal === 'Rating') results.sort((a,b) => b.rating - a.rating);
+    else if (sortVal === 'Distance') results.sort((a,b) => (a.postcode > b.postcode ? 1 : -1));
+    else if (sortVal === 'Reviews') results.sort((a,b) => b.reviewCount - a.reviewCount);
+    else results.sort((a,b) => (b.isFeatured ? 1 : 0) - (a.isFeatured ? 1 : 0));
+
+    renderResultsList(results);
+    updateResultsCount(results.length);
+  }
+
+  // ── INIT — load on page ready ──
+  window.addEventListener('load', loadListingsFromDB);
+
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=Inter:wght@700;800;900&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { overflow-x: hidden; max-width: 100%; }
+
+  :root {
+    --cream: #F7F5F0;
+    --charcoal: #0A2414;
+    --brick: #125F2F;
+    --brick-dark: #0D4A22;
+    --sage: #1E7A3E;
+    --green: #125F2F;
+    --green-dark: #0A2414;
+    --sage-light: #E8F5ED;
+    --mid: #6B6B69;
+    --border: #E2DED7;
+    --white: #FFFFFF;
+    --gold: #D4A847;
+    --featured-bg: #F0F8F3;
+  }
+
+  body {
+    font-family: 'DM Sans', sans-serif;
+    background: var(--cream);
+    color: var(--charcoal);
+    line-height: 1.5;
+    min-height: 100vh;
+  }
+
+  /* ── NAV ── */
+  nav {
+    position: sticky; top: 0; z-index: 100;
+    background: var(--green-dark);
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0 40px; height: 60px;
+  }
+  @media (max-width: 768px) {
+    nav { padding: 0 20px; }
+  }
+  .logo {
+    font-family: 'Inter', sans-serif;
+    font-size: 22px; font-weight: 800;
+    color: var(--white); letter-spacing: -0.5px;
+    cursor: pointer;
+  }
+  .logo span { color: #C1FF72; }
+  nav ul { list-style: none; display: flex; gap: 28px; align-items: center; }
+  nav ul li a {
+    color: var(--white); font-size: 14px; font-weight: 500;
+    text-decoration: none; transition: color 0.2s;
+  }
+  nav ul li a:hover { color: rgba(255,255,255,0.5); }
+  .nav-cta {
+    background: #C1FF72; color: var(--charcoal) !important;
+    padding: 8px 18px; border-radius: 6px; font-weight: 600 !important;
+    transition: background 0.2s !important;
+  }
+  .nav-cta:hover { background: #a8e85a !important; color: var(--charcoal) !important; }
+
+  /* ── PAGES ── */
+  .page { display: none; }
+  .page.active { display: block; }
+
+  /* ── HOME HERO ── */
+  .hero {
+    background: var(--charcoal);
+    padding: 80px 40px 100px;
+    text-align: center;
+    position: relative; overflow: hidden;
+  }
+  .hero::before {
+    content: '';
+    position: absolute; inset: 0;
+    background: radial-gradient(ellipse at 60% 0%, rgba(193,255,114,0.12) 0%, transparent 65%);
+    pointer-events: none;
+  }
+  .hero-eyebrow {
+    display: inline-block;
+    background: rgba(193,255,114,0.15); color: #C1FF72;
+    font-size: 12px; font-weight: 600; letter-spacing: 1.2px;
+    text-transform: uppercase; padding: 6px 14px; border-radius: 20px;
+    margin-bottom: 24px;
+  }
+  .hero h1 {
+    font-family: 'Inter', sans-serif;
+    font-size: clamp(38px, 6vw, 72px); font-weight: 800;
+    color: var(--white); line-height: 1.08; letter-spacing: -1.5px;
+    margin-bottom: 18px;
+  }
+  .hero h1 em { color: #C1FF72; font-style: normal; }
+  .hero p {
+    color: rgba(255,255,255,0.9); font-size: 18px; max-width: 520px;
+    margin: 0 auto 48px;
+  }
+
+  .search-card {
+    background: var(--white);
+    border-radius: 16px; padding: 28px 32px;
+    max-width: 700px; margin: 0 auto;
+    box-shadow: 0 24px 60px rgba(0,0,0,0.28);
+  }
+  .search-row {
+    display: grid; grid-template-columns: 1fr 1fr auto;
+    gap: 12px; align-items: end;
+  }
+  .field label {
+    display: block; font-size: 11px; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.8px;
+    color: var(--charcoal); margin-bottom: 6px;
+  }
+  .results-header .field label {
+    color: #ffffff;
+  }
+  .field input, .field select {
+    width: 100%; padding: 13px 16px;
+    border: 1.5px solid var(--border); border-radius: 8px;
+    font-family: 'DM Sans', sans-serif; font-size: 15px;
+    color: var(--charcoal); background: var(--cream);
+    transition: border-color 0.2s;
+    appearance: none;
+  }
+
+  .field input:focus, .field select:focus {
+    outline: none; border-color: #C1FF72;
+  }
+  .btn-primary {
+    background: #C1FF72; color: var(--charcoal);
+    border: none; padding: 13px 28px;
+    border-radius: 8px; font-family: 'DM Sans', sans-serif;
+    font-size: 15px; font-weight: 600; cursor: pointer;
+    transition: background 0.2s; white-space: nowrap;
+  }
+  .btn-primary:hover { background: var(--brick-dark); }
+  .search-tabs {
+    display: flex; gap: 4px;
+    background: var(--cream); border-radius: 8px; padding: 4px;
+    margin-bottom: 20px; width: fit-content;
+  }
+  .search-tab {
+    padding: 7px 18px; border-radius: 6px; border: none;
+    font-family: 'DM Sans', sans-serif; font-size: 14px; font-weight: 500;
+    cursor: pointer; background: transparent; color: var(--mid);
+    transition: all 0.15s;
+  }
+  .search-tab.active {
+    background: var(--charcoal); color: var(--white);
+  }
+
+  /* ── HOW IT WORKS ── */
+  .section { padding: 80px 40px; max-width: 1100px; margin: 0 auto; }
+  .section-label {
+    font-size: 11px; font-weight: 700; letter-spacing: 1.5px;
+    text-transform: uppercase; color: #C1FF72; margin-bottom: 16px;
+  }
+  .section h2 {
+    font-family: 'Inter', sans-serif;
+    font-size: clamp(28px, 4vw, 44px); font-weight: 700;
+    letter-spacing: -0.8px; margin-bottom: 48px;
+  }
+  .steps-grid {
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 32px;
+  }
+  .step {
+    background: var(--white); border-radius: 12px; padding: 28px;
+    border: 1px solid var(--border);
+  }
+  .step-num {
+    width: 36px; height: 36px; background: var(--charcoal);
+    color: var(--white); border-radius: 50%; display: flex;
+    align-items: center; justify-content: center;
+    font-size: 14px; font-weight: 700; margin-bottom: 16px;
+  }
+  .step h3 { font-size: 17px; font-weight: 600; margin-bottom: 8px; }
+  .step p { font-size: 14px; color: var(--mid); line-height: 1.6; }
+
+  /* ── CATEGORIES ── */
+  .cats-grid {
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px;
+  }
+  .cat-card {
+    background: var(--white); border: 1.5px solid var(--border);
+    border-radius: 12px; padding: 24px 20px;
+    cursor: pointer; transition: all 0.2s;
+    text-align: center;
+  }
+  .cat-card:hover { border-color: #C1FF72; transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0,0,0,0.08); }
+  .cat-icon { font-size: 28px; margin-bottom: 10px; display:flex; align-items:center; justify-content:center; }
+  .cat-card h4 { font-size: 14px; font-weight: 600; margin-bottom: 4px; }
+  .cat-card span { font-size: 12px; color: var(--mid); }
+
+  /* ── FEATURED ── */
+  .featured-strip {
+    background: var(--featured-bg);
+    border-top: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+    padding: 64px 40px;
+  }
+  .featured-inner { max-width: 1100px; margin: 0 auto; }
+  .featured-badge {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: var(--gold); color: var(--charcoal);
+    font-size: 11px; font-weight: 700; letter-spacing: 0.8px;
+    text-transform: uppercase; padding: 4px 10px; border-radius: 4px;
+    margin-bottom: 8px;
+  }
+  .listings-grid {
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px;
+    margin-top: 32px;
+  }
+  .listing-card {
+    background: var(--white); border-radius: 12px; padding: 24px;
+    border: 1px solid var(--border); cursor: pointer;
+    transition: all 0.2s; position: relative;
+  }
+  .listing-card:hover { box-shadow: 0 12px 32px rgba(0,0,0,0.1); transform: translateY(-2px); }
+  .listing-card.featured-card {
+    border: 2px solid var(--green);
+    background: linear-gradient(135deg, #f0f8f3 0%, #ffffff 60%);
+    box-shadow: 0 8px 32px rgba(18,95,47,0.15);
+    transform: translateY(-2px);
+  }
+  .listing-card.featured-card:hover {
+    box-shadow: 0 16px 48px rgba(18,95,47,0.22);
+    transform: translateY(-4px);
+  }
+  .featured-flag {
+    position: absolute; top: 16px; right: 16px;
+    background: var(--green); color: var(--white);
+    font-size: 10px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.6px; padding: 4px 10px; border-radius: 4px;
+    display: flex; align-items: center; gap: 4px;
+  }
+  .biz-logo {
+    width: 44px; height: 44px; border-radius: 8px;
+    background: var(--charcoal); display: flex; align-items: center;
+    justify-content: center; color: var(--white); font-weight: 700;
+    font-size: 16px; margin-bottom: 12px; flex-shrink: 0;
+  }
+  .biz-name { font-size: 16px; font-weight: 600; margin-bottom: 4px; }
+  .biz-location { font-size: 13px; color: var(--mid); margin-bottom: 10px; }
+  .biz-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px; }
+  .tag {
+    background: var(--sage-light); color: var(--sage);
+    font-size: 12px; font-weight: 500; padding: 3px 10px; border-radius: 20px;
+  }
+  .rating { display: flex; align-items: center; gap: 6px; font-size: 13px; }
+  .stars { color: var(--gold); letter-spacing: 1px; }
+  .rating-count { color: var(--mid); }
+  .card-actions { display: flex; gap: 8px; margin-top: 16px; }
+  .btn-outline {
+    flex: 1; padding: 9px 12px; border: 1.5px solid var(--border);
+    background: transparent; border-radius: 7px; font-size: 13px;
+    font-family: 'DM Sans', sans-serif; font-weight: 500;
+    cursor: pointer; color: var(--charcoal); transition: all 0.2s;
+  }
+  .btn-outline:hover { border-color: var(--charcoal); }
+  .btn-sm {
+    flex: 1; padding: 9px 12px; background: var(--charcoal);
+    color: var(--white); border: none; border-radius: 7px;
+    font-size: 13px; font-family: 'DM Sans', sans-serif;
+    font-weight: 500; cursor: pointer; transition: background 0.2s;
+  }
+  .btn-sm:hover { background: #333; }
+
+  /* ── FOR BUSINESS BANNER ── */
+  .biz-banner {
+    background: var(--charcoal); color: var(--white);
+    padding: 64px 40px;
+  }
+  .biz-banner-inner {
+    max-width: 1100px; margin: 0 auto;
+    display: grid; grid-template-columns: 1fr auto; gap: 40px; align-items: center;
+  }
+  .biz-banner h2 {
+    font-family: 'Inter', sans-serif;
+    font-size: 34px; font-weight: 700; letter-spacing: -0.5px;
+    margin-bottom: 12px;
+  }
+  .biz-banner p { color: rgba(255,255,255,0.65); font-size: 16px; max-width: 520px; }
+  .biz-perks { display: flex; gap: 20px; margin-top: 24px; flex-wrap: wrap; }
+  .perk {
+    display: flex; align-items: center; gap: 8px;
+    font-size: 14px; color: rgba(255,255,255,0.8);
+  }
+  .perk-dot { width: 6px; height: 6px; background: #C1FF72; border-radius: 50%; flex-shrink: 0; }
+
+  /* ── SEARCH RESULTS PAGE ── */
+  .results-page { padding: 0; }
+  .results-header {
+    background: var(--charcoal); padding: 28px 40px;
+  }
+  .results-search-row {
+    display: flex; gap: 12px; align-items: flex-end;
+    max-width: 900px;
+  }
+  .results-header .field label { color: #ffffff; font-weight: 700; letter-spacing: 1px; }
+  .results-header .field input,
+  .results-header .field select {
+    background: rgba(255,255,255,0.08); border-color: rgba(255,255,255,0.15);
+    color: var(--white);
+  }
+  .results-header .field input::placeholder { color: rgba(255,255,255,0.4); }
+  .results-body {
+    display: grid; grid-template-columns: 280px 1fr;
+    max-width: 1200px; margin: 0 auto;
+    gap: 0; padding: 32px 40px; gap: 32px;
+  }
+  .filters-panel { flex-shrink: 0; }
+  .filter-card {
+    background: var(--white); border: 1px solid var(--border);
+    border-radius: 12px; padding: 24px; margin-bottom: 16px;
+  }
+  .filter-card h4 { font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.6px; margin-bottom: 16px; color: var(--mid); }
+  .filter-option { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; cursor: pointer; }
+  .filter-option input[type="checkbox"] { accent-color: #C1FF72; width: 16px; height: 16px; }
+  .filter-option label { font-size: 14px; cursor: pointer; }
+  .results-list { min-width: 0; }
+  .results-meta {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-bottom: 20px;
+  }
+  .results-meta h3 { font-size: 20px; font-weight: 600; }
+  .results-meta span { font-size: 14px; color: var(--mid); }
+  .sort-select {
+    border: 1.5px solid var(--border); border-radius: 7px;
+    padding: 8px 14px; font-family: 'DM Sans', sans-serif;
+    font-size: 14px; background: var(--white); cursor: pointer;
+  }
+  .result-item {
+    background: var(--white); border: 1px solid var(--border);
+    border-radius: 12px; padding: 24px; margin-bottom: 16px;
+    cursor: pointer; transition: all 0.2s; display: flex; gap: 20px;
+    position: relative;
+  }
+  .result-item:hover { box-shadow: 0 8px 24px rgba(0,0,0,0.08); border-color: #ccc; }
+  .result-item.is-featured {
+    border: 2px solid var(--green);
+    background: linear-gradient(135deg, #f0f8f3 0%, #ffffff 70%);
+    box-shadow: 0 6px 24px rgba(18,95,47,0.12);
+  }
+  .result-body { flex: 1; min-width: 0; }
+  .result-body .biz-name { font-size: 17px; }
+  .result-desc { font-size: 14px; color: var(--mid); margin: 8px 0 12px; line-height: 1.6; }
+  .result-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+  .result-stat { font-size: 13px; color: var(--mid); margin-top: 10px; }
+
+  /* ── POST JOB MODAL ── */
+  .modal-overlay {
+    display: none; position: fixed; inset: 0;
+    background: rgba(0,0,0,0.55); z-index: 200;
+    align-items: center; justify-content: center; padding: 20px;
+  }
+  .modal-overlay.open { display: flex; }
+  .modal {
+    background: var(--white); border-radius: 16px;
+    width: 100%; max-width: 560px; max-height: 90vh;
+    overflow-y: auto;
+  }
+  .modal-header {
+    padding: 28px 32px 0;
+    display: flex; justify-content: space-between; align-items: flex-start;
+  }
+  .modal-header h3 {
+    font-family: 'Inter', sans-serif;
+    font-size: 24px; font-weight: 700;
+  }
+  .modal-close {
+    background: none; border: none; font-size: 22px; cursor: pointer;
+    color: var(--mid); line-height: 1; padding: 4px;
+  }
+  .modal-body { padding: 24px 32px 32px; }
+  .modal-step { display: none; }
+  .modal-step.active { display: block; }
+  .modal-body .field { margin-bottom: 18px; }
+  .modal-body .field label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px; color: var(--charcoal); opacity: 1; }
+  .modal-body .field input,
+  .modal-body .field select,
+  .modal-body .field textarea {
+    width: 100%; padding: 12px 14px;
+    border: 1.5px solid var(--border); border-radius: 8px;
+    font-family: 'DM Sans', sans-serif; font-size: 15px;
+    color: var(--charcoal); background: var(--cream);
+  }
+  .modal-body .field input:focus,
+  .modal-body .field select:focus,
+  .modal-body .field textarea:focus { outline: none; border-color: #C1FF72; }
+  .modal-body .field textarea { resize: vertical; min-height: 100px; }
+  .modal-progress { display: flex; gap: 6px; margin-bottom: 24px; }
+  .prog-dot {
+    height: 4px; flex: 1; border-radius: 2px;
+    background: var(--border); transition: background 0.3s;
+  }
+  .prog-dot.done { background: #125F2F; }
+  .modal-footer {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-top: 24px;
+  }
+  .modal-back {
+    background: none; border: 1.5px solid var(--border);
+    border-radius: 8px; padding: 11px 20px;
+    font-family: 'DM Sans', sans-serif; font-size: 14px; font-weight: 500;
+    cursor: pointer; color: var(--charcoal);
+  }
+  .modal-back:hover { border-color: var(--charcoal); }
+  .step-indicator { font-size: 13px; color: var(--mid); }
+
+  /* ── BUSINESS LISTING PAGE ── */
+  .listing-page {}
+  .listing-hero {
+    background: var(--charcoal); padding: 48px 40px 0;
+  }
+  .listing-hero-inner { max-width: 1100px; margin: 0 auto; }
+  .breadcrumb {
+    font-size: 13px; color: rgba(255,255,255,0.5);
+    margin-bottom: 24px; display: flex; gap: 8px; align-items: center;
+  }
+  .breadcrumb a { color: rgba(255,255,255,0.5); text-decoration: none; cursor: pointer; }
+  .breadcrumb a:hover { color: var(--white); }
+  .listing-header-row {
+    display: flex; gap: 24px; align-items: flex-start;
+    padding-bottom: 40px;
+  }
+  .listing-logo {
+    width: 72px; height: 72px; border-radius: 12px;
+    background: #C1FF72; color: var(--charcoal);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 26px; font-weight: 700; flex-shrink: 0;
+  }
+  .listing-title h1 {
+    font-family: 'Inter', sans-serif;
+    font-size: 32px; color: var(--white); font-weight: 700;
+    letter-spacing: -0.5px;
+  }
+  .listing-meta-row {
+    display: flex; gap: 20px; align-items: center; margin-top: 10px; flex-wrap: wrap;
+  }
+  .listing-meta-row .rating { color: rgba(255,255,255,0.8); }
+  .listing-meta-row .stars { color: var(--gold); }
+  .listing-location { color: rgba(255,255,255,0.6); font-size: 14px; }
+  .verified-badge {
+    background: #125F2F; color: var(--white);
+    font-size: 11px; font-weight: 700; padding: 3px 10px;
+    border-radius: 20px; letter-spacing: 0.5px;
+  }
+  .listing-body {
+    max-width: 1100px; margin: 0 auto; padding: 40px 40px;
+    display: grid; grid-template-columns: 1fr 340px; gap: 40px;
+  }
+  .listing-section { margin-bottom: 36px; }
+  .listing-section h3 { font-size: 17px; font-weight: 700; margin-bottom: 16px; }
+  .listing-section p { font-size: 15px; color: var(--mid); line-height: 1.7; }
+  .services-list { display: flex; flex-wrap: wrap; gap: 8px; }
+  .service-tag {
+    background: var(--cream); border: 1px solid var(--border);
+    border-radius: 20px; padding: 6px 14px; font-size: 13px;
+  }
+  .coverage-tags { display: flex; flex-wrap: wrap; gap: 8px; }
+  .contact-card {
+    background: var(--white); border: 1px solid var(--border);
+    border-radius: 14px; padding: 28px; position: sticky; top: 80px;
+  }
+  .contact-card h3 { font-size: 18px; font-weight: 700; margin-bottom: 6px; }
+  .contact-card p { font-size: 14px; color: var(--mid); margin-bottom: 20px; }
+  .contact-card .btn-primary { width: 100%; text-align: center; margin-bottom: 10px; display: block; }
+  .contact-alt {
+    width: 100%; padding: 12px; border: 1.5px solid var(--border);
+    border-radius: 8px; font-family: 'DM Sans', sans-serif;
+    font-size: 14px; font-weight: 500; cursor: pointer;
+    background: transparent; color: var(--charcoal); transition: all 0.2s;
+    margin-bottom: 10px;
+  }
+  .contact-alt:hover { border-color: var(--charcoal); }
+  .contact-info-row {
+    display: flex; align-items: center; gap: 8px;
+    font-size: 13px; color: var(--mid); padding: 10px 0;
+    border-top: 1px solid var(--border); margin-top: 8px;
+  }
+  .review-item {
+    background: var(--cream); border-radius: 10px;
+    padding: 18px; margin-bottom: 12px;
+  }
+  .review-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+  .reviewer { font-size: 14px; font-weight: 600; }
+  .review-date { font-size: 12px; color: var(--mid); }
+  .review-text { font-size: 14px; color: var(--mid); line-height: 1.6; }
+
+  /* ── GALLERY ── */
+  .listing-gallery {
+    display: grid; grid-template-columns: 1fr 220px; gap: 8px;
+    border-radius: 12px; overflow: hidden; height: 320px;
+  }
+  .gallery-side { display: grid; grid-template-rows: 1fr 1fr; gap: 8px; }
+  .gallery-placeholder {
+    background: #1a3d28; display: flex; align-items: center;
+    justify-content: center; position: relative; cursor: pointer;
+    transition: filter 0.2s;
+  }
+  .gallery-placeholder:hover { filter: brightness(1.1); }
+  .gallery-large { border-radius: 0; }
+  .gallery-small { border-radius: 0; }
+  .gallery-label {
+    color: rgba(255,255,255,0.3); font-size: 24px;
+  }
+  .gallery-overlay {
+    position: absolute; inset: 0; background: rgba(0,0,0,0.55);
+    display: flex; align-items: center; justify-content: center;
+    color: white; font-size: 13px; font-weight: 600;
+    cursor: pointer;
+  }
+
+  /* ── BUSINESS SIGNUP ── */
+  .signup-page {
+    max-width: 1100px; margin: 0 auto; padding: 60px 40px;
+    display: grid; grid-template-columns: 1fr 440px; gap: 80px;
+  }
+  .signup-left h1 {
+    font-family: 'Inter', sans-serif;
+    font-size: 42px; font-weight: 700; letter-spacing: -1px;
+    margin-bottom: 16px; line-height: 1.1;
+  }
+  .signup-left p { font-size: 16px; color: var(--mid); margin-bottom: 36px; }
+  .signup-perks { list-style: none; }
+  .signup-perks li {
+    display: flex; align-items: flex-start; gap: 12px;
+    margin-bottom: 20px; font-size: 15px;
+  }
+  .perk-icon {
+    width: 28px; height: 28px; background: var(--sage-light);
+    color: var(--sage); border-radius: 6px; display: flex;
+    align-items: center; justify-content: center; flex-shrink: 0; font-size: 14px;
+  }
+  .signup-form-card {
+    background: var(--white); border: 1px solid var(--border);
+    border-radius: 16px; padding: 36px; height: fit-content;
+  }
+  .signup-form-card h2 { font-size: 22px; font-weight: 700; margin-bottom: 24px; }
+  .pricing-callout {
+    background: var(--sage-light); border: 1px solid var(--sage);
+    border-radius: 10px; padding: 14px 16px; margin-top: 16px;
+    font-size: 13px; color: var(--charcoal);
+  }
+  .pricing-callout strong { color: var(--sage); }
+
+  /* ── CONTACT MODAL ── */
+  .success-state { text-align: center; padding: 20px 0; }
+  .success-icon { font-size: 48px; margin-bottom: 16px; }
+  .success-state h3 { font-size: 22px; font-weight: 700; margin-bottom: 8px; }
+  .success-state p { color: var(--mid); font-size: 15px; }
+
+  /* ── FOOTER ── */
+  footer {
+    background: var(--charcoal); color: rgba(255,255,255,0.5);
+    padding: 48px 40px; font-size: 14px;
+  }
+  .footer-inner {
+    max-width: 1100px; margin: 0 auto;
+    display: grid; grid-template-columns: 2fr 1fr 1fr 1fr; gap: 40px;
+  }
+  .footer-brand .logo { margin-bottom: 12px; display: block; }
+  .footer-brand p { font-size: 14px; line-height: 1.6; }
+  .footer-col h5 { color: var(--white); font-size: 13px; font-weight: 700; margin-bottom: 14px; }
+  .footer-col ul { list-style: none; }
+  .footer-col ul li { margin-bottom: 8px; }
+  .footer-col ul li a { color: rgba(255,255,255,0.5); text-decoration: none; cursor: pointer; }
+  .footer-col ul li a:hover { color: var(--white); }
+  .footer-bottom {
+    max-width: 1100px; margin: 32px auto 0;
+    border-top: 1px solid rgba(255,255,255,0.1);
+    padding-top: 24px; font-size: 13px;
+    display: flex; justify-content: space-between;
+  }
+
+  /* ── TOAST ── */
+  .toast {
+    position: fixed; bottom: 32px; left: 50%; transform: translateX(-50%);
+    background: var(--charcoal); color: var(--white);
+    padding: 14px 24px; border-radius: 10px; font-size: 14px;
+    font-weight: 500; opacity: 0; transition: opacity 0.3s;
+    z-index: 300; pointer-events: none; white-space: nowrap;
+  }
+  .toast.show { opacity: 1; }
+
+
+  @media (max-width: 768px) {
+    nav { padding: 0 20px; }
+    nav ul { display: none; }
+    .results-meta { flex-direction: column; align-items: flex-start; gap: 12px; }
+    .results-meta > div:last-child { display: flex; flex-direction: column; gap: 8px; width: 100%; }
+    .results-meta .btn-outline, .results-meta .sort-select { width: 100%; }
+    .hero { padding: 48px 20px 64px; }
+    .search-row { grid-template-columns: 1fr; }
+    .steps-grid, .cats-grid, .listings-grid { grid-template-columns: 1fr 1fr; }
+    .section { padding: 48px 20px; }
+    .biz-banner-inner { grid-template-columns: 1fr; }
+    .results-body { grid-template-columns: 1fr; padding: 20px; }
+    .filters-panel { display: none; }
+    .listing-body { grid-template-columns: 1fr; padding: 24px 20px; }
+    .signup-page { grid-template-columns: 1fr; padding: 40px 20px; }
+    .footer-inner { grid-template-columns: 1fr 1fr; }
+  }
+
+  /* ── MOBILE NAV ── */
+  .hamburger {
+    display: none;
+    flex-direction: column;
+    justify-content: center;
+    gap: 5px;
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 8px;
+    z-index: 110;
+  }
+  .hamburger span {
+    display: block;
+    width: 22px;
+    height: 2px;
+    background: #ffffff;
+    border-radius: 2px;
+    transition: all 0.25s;
+  }
+  .hamburger.open span:nth-child(1) { transform: rotate(45deg) translate(5px, 5px); }
+  .hamburger.open span:nth-child(2) { opacity: 0; width: 0; }
+  .hamburger.open span:nth-child(3) { transform: rotate(-45deg) translate(5px, -5px); }
+  @media (max-width: 768px) {
+    .hamburger { display: flex; }
+    nav ul { display: none !important; }
+  }
+  .mobile-nav {
+    display: none;
+    position: fixed;
+    top: 60px;
+    left: 0;
+    right: 0;
+    background: #0A2414;
+    z-index: 99;
+    flex-direction: column;
+    padding: 8px 0;
+    border-bottom: 2px solid rgba(193,255,114,0.2);
+    box-shadow: 0 8px 24px rgba(0,0,0,0.3);
+  }
+  .mobile-nav.open { display: flex; }
+  .mobile-nav a {
+    padding: 16px 24px;
+    color: rgba(255,255,255,0.9);
+    font-size: 15px;
+    font-weight: 500;
+    cursor: pointer;
+    text-decoration: none;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+    transition: background 0.15s;
+    display: block;
+  }
+  .mobile-nav a:last-child {
+    color: #C1FF72;
+    font-weight: 700;
+  }
+  .mobile-nav a:hover { background: rgba(255,255,255,0.06); }
+
+  /* ── HAMBURGER + MOBILE NAV ── */
+  .hamburger {
+    display: none;
+    flex-direction: column; justify-content: center; gap: 5px;
+    background: none; border: none; cursor: pointer;
+    padding: 8px; flex-shrink: 0; z-index: 110;
+  }
+  .hamburger span {
+    display: block; width: 22px; height: 2px;
+    background: var(--white); border-radius: 2px;
+    transition: transform 0.3s, opacity 0.3s;
+  }
+  .hamburger.open span:nth-child(1) { transform: rotate(45deg) translate(5px, 5px); }
+  .hamburger.open span:nth-child(2) { opacity: 0; }
+  .hamburger.open span:nth-child(3) { transform: rotate(-45deg) translate(5px, -5px); }
+  .mobile-nav {
+    display: none; position: fixed;
+    top: 60px; left: 0; right: 0; bottom: 0;
+    background: var(--green-dark); z-index: 98;
+    flex-direction: column; padding: 8px 0;
+    overflow-y: auto;
+  }
+  .mobile-nav.open { display: flex; }
+  .mobile-nav a {
+    padding: 16px 24px; color: rgba(255,255,255,0.85);
+    font-size: 16px; font-weight: 500; cursor: pointer;
+    text-decoration: none; display: block;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+    transition: background 0.15s, color 0.15s;
+  }
+  .mobile-nav a:hover { background: rgba(255,255,255,0.06); color: var(--white); }
+  .mobile-nav a:last-child { color: var(--lime); font-weight: 700; }
+  @media (max-width: 768px) {
+    .hamburger { display: flex; }
+    nav ul { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="logo-svg" onclick="showPage('home')" style="cursor:pointer;display:flex;align-items:center;"><svg width="141" height="28" viewBox="0 0 141 28" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M13.88 28L10.16 20.08H10.12V28H4.88758e-05V-1.90735e-06H15.0001C20.5601 -1.90735e-06 25.04 4.52 25.04 10.04C25.04 13.72 23.04 16.92 20.1201 18.68L25.3601 28H13.88ZM12.12 8.24H10.12V13.16H12.12C13.48 13.16 14.6 12.08 14.6 10.72C14.6 9.36 13.48 8.24 12.12 8.24ZM38.9922 -1.90735e-06H49.1922V17.6C49.1922 24.08 43.9522 28 37.4722 28C31.0322 28 25.7922 24.08 25.7922 17.6V-1.90735e-06H35.9522V18.28C35.9522 19.12 36.6322 19.8 37.4722 19.8C38.3122 19.8 38.9922 19.12 38.9922 18.28V-1.90735e-06ZM71.7335 13.52C74.2535 14.76 75.9735 17.36 75.9735 20.36C75.9735 24.6 72.5735 28 68.3335 28H50.3735V-1.90735e-06H66.8135C71.0535 -1.90735e-06 74.4935 3.44 74.4935 7.68C74.4935 10 73.4135 12.12 71.7335 13.52ZM62.9735 8.24H60.4935V10.56H62.9735C63.6135 10.56 64.1335 10.04 64.1335 9.4C64.1335 8.76 63.6135 8.24 62.9735 8.24ZM64.4935 19.8C65.1335 19.8 65.6535 19.28 65.6535 18.64C65.6535 18 65.1335 17.48 64.4935 17.48H60.4935V19.8H64.4935ZM97.7601 13.52C100.28 14.76 102 17.36 102 20.36C102 24.6 98.6001 28 94.3601 28H76.4001V-1.90735e-06H92.8401C97.0801 -1.90735e-06 100.52 3.44 100.52 7.68C100.52 10 99.4401 12.12 97.7601 13.52ZM89.0001 8.24H86.5201V10.56H89.0001C89.6401 10.56 90.1601 10.04 90.1601 9.4C90.1601 8.76 89.6401 8.24 89.0001 8.24ZM90.5201 19.8C91.1601 19.8 91.6801 19.28 91.6801 18.64C91.6801 18 91.1601 17.48 90.5201 17.48H86.5201V19.8H90.5201ZM112.587 19.8H121.227V28H102.427V-1.90735e-06H112.587V19.8ZM140.535 8.24H131.815V10.56H139.895V17.48H131.815V19.8H140.535V28H121.695V-1.90735e-06H140.535V8.24Z" fill="#C1FF72"/><path d="M13.88 28L10.16 20.08H10.12V28H4.88758e-05V-1.90735e-06H15.0001C20.5601 -1.90735e-06 25.04 4.52 25.04 10.04C25.04 13.72 23.04 16.92 20.1201 18.68L25.3601 28H13.88ZM12.12 8.24H10.12V13.16H12.12C13.48 13.16 14.6 12.08 14.6 10.72C14.6 9.36 13.48 8.24 12.12 8.24ZM38.9922 -1.90735e-06H49.1922V17.6C49.1922 24.08 43.9522 28 37.4722 28C31.0322 28 25.7922 24.08 25.7922 17.6V-1.90735e-06H35.9522V18.28C35.9522 19.12 36.6322 19.8 37.4722 19.8C38.3122 19.8 38.9922 19.12 38.9922 18.28V-1.90735e-06ZM71.7335 13.52C74.2535 14.76 75.9735 17.36 75.9735 20.36C75.9735 24.6 72.5735 28 68.3335 28H50.3735V-1.90735e-06H66.8135C71.0535 -1.90735e-06 74.4935 3.44 74.4935 7.68C74.4935 10 73.4135 12.12 71.7335 13.52ZM62.9735 8.24H60.4935V10.56H62.9735C63.6135 10.56 64.1335 10.04 64.1335 9.4C64.1335 8.76 63.6135 8.24 62.9735 8.24ZM64.4935 19.8C65.1335 19.8 65.6535 19.28 65.6535 18.64C65.6535 18 65.1335 17.48 64.4935 17.48H60.4935V19.8H64.4935ZM97.7601 13.52C100.28 14.76 102 17.36 102 20.36C102 24.6 98.6001 28 94.3601 28H76.4001V-1.90735e-06H92.8401C97.0801 -1.90735e-06 100.52 3.44 100.52 7.68C100.52 10 99.4401 12.12 97.7601 13.52ZM89.0001 8.24H86.5201V10.56H89.0001C89.6401 10.56 90.1601 10.04 90.1601 9.4C90.1601 8.76 89.6401 8.24 89.0001 8.24ZM90.5201 19.8C91.1601 19.8 91.6801 19.28 91.6801 18.64C91.6801 18 91.1601 17.48 90.5201 17.48H86.5201V19.8H90.5201ZM112.587 19.8H121.227V28H102.427V-1.90735e-06H112.587V19.8ZM140.535 8.24H131.815V10.56H139.895V17.48H131.815V19.8H140.535V28H121.695V-1.90735e-06H140.535V8.24Z" fill="white"/></svg></div>
+  <ul>
+    <li><a href="#" onclick="showPage('results'); return false;">Find Removalists</a></li>
+    <li><a href="#" onclick="openModal('postJobModal'); return false;">Post a Job</a></li>
+    <li><a href="#" onclick="showPage('signup'); return false;">List Your Business</a></li>
+    <li><a href="/rubble-dashboard.html" class="nav-cta">Business login →</a></li>
+  </ul>
+  <button class="hamburger" onclick="toggleMobileNav()" id="hamburger" aria-label="Menu">
+    <span></span><span></span><span></span>
+  </button>
+</nav>
+<div class="mobile-nav" id="mobileNav">
+  <a onclick="showPage('home'); toggleMobileNav()">Home</a>
+  <a onclick="showPage('results'); toggleMobileNav()">Find Removalists</a>
+  <a onclick="openModal('postJobModal'); toggleMobileNav()">Post a Job</a>
+  <a onclick="showPage('signup'); toggleMobileNav()">List Your Business</a>
+  <a href="/rubble-dashboard.html">Business Login →</a>
+</div>
+
+<!-- ═══════════════════════════════ HOME ═══════════════════════════════ -->
+<div id="page-home" class="page active">
+
+  <section class="hero">
+    <div class="hero-eyebrow">UK's #1 Waste Removal Directory</div>
+    <h1>Remove the <em style="color:#C1FF72;font-style:normal;">rubbish</em><br>without the hassle.</h1>
+    <p>Find trusted, local waste removalists in seconds — or post your job and let them come to you.</p>
+
+    <div class="search-card">
+      <div class="search-tabs">
+        <button class="search-tab" onclick="setSearchTab(this, 'find')">Find a removalist</button>
+        <button class="search-tab active" onclick="setSearchTab(this, 'post')">Post a job</button>
+      </div>
+      <div id="findTab" style="display:none;">
+        <div class="search-row">
+          <div class="field">
+            <label>Postcode or Town</label>
+            <input type="text" placeholder="e.g. OX1 or Oxford" id="searchPostcode">
+          </div>
+          <div class="field">
+            <label>Waste Type</label>
+            <select id="searchType">
+              <option value="">All types</option>
+              <option>Skip hire</option>
+              <option>Rubbish clearance</option>
+              <option>Construction waste</option>
+              <option>Garden waste</option>
+              <option>Commercial clearance</option>
+              <option>Hazardous waste</option>
+              <option>Electronics disposal</option>
+            </select>
+          </div>
+          <button class="btn-primary" onclick="doSearch()">Search</button>
+        </div>
+      </div>
+      <div id="postTab">
+        <div class="search-row">
+          <div class="field">
+            <label>Your Postcode</label>
+            <input type="text" placeholder="e.g. OX1 4JE">
+          </div>
+          <div class="field">
+            <label>What needs removing?</label>
+            <select>
+              <option value="" disabled selected>Select waste type</option>
+              <option>Skip hire</option>
+              <option>Rubbish clearance</option>
+              <option>Construction waste</option>
+              <option>Garden waste</option>
+              <option>Commercial clearance</option>
+            </select>
+          </div>
+          <button class="btn-primary" onclick="openModal('postJobModal')">Get Quotes</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="section">
+    <div class="section-label">How it works</div>
+    <h2>Up and running in minutes</h2>
+    <div class="steps-grid">
+      <div class="step">
+        <div class="step-num">1</div>
+        <h3>Search or post</h3>
+        <p>Enter your postcode and waste type to browse local removalists, or post your job once and receive multiple quotes.</p>
+      </div>
+      <div class="step">
+        <div class="step-num">2</div>
+        <h3>Compare &amp; choose</h3>
+        <p>Browse verified listings with real reviews, service details, and pricing ranges. No guesswork.</p>
+      </div>
+      <div class="step">
+        <div class="step-num">3</div>
+        <h3>Contact directly</h3>
+        <p>Reach out via the platform or phone. You deal with your removalist directly — no middleman markup.</p>
+      </div>
+    </div>
+  </div>
+
+  <div style="background: var(--white); border-top: 1px solid var(--border); border-bottom: 1px solid var(--border);">
+    <div class="section">
+      <div class="section-label">Browse by category</div>
+      <h2>What are you clearing?</h2>
+      <div class="cats-grid">
+        <div class="cat-card" onclick="searchCategory('Skip hire')">
+          <div class="cat-icon"><svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Skip bin: trapezoidal body, wider at top -->
+  <polygon points="4,10 28,10 25,26 7,26" fill="#125F2F" stroke="#125F2F" stroke-width="0"/>
+  <polygon points="4,10 28,10 25,26 7,26" fill="none" stroke="#1C1C1A" stroke-width="1.5" stroke-linejoin="round"/>
+  <!-- Rim at top -->
+  <rect x="2" y="7.5" width="28" height="3" rx="1" fill="#1C1C1A"/>
+  <!-- Stripes on body -->
+  <line x1="12" y1="11" x2="11" y2="25" stroke="#C1FF72" stroke-width="1.5"/>
+  <line x1="20" y1="11" x2="19" y2="25" stroke="#C1FF72" stroke-width="1.5"/>
+  <!-- Wheels -->
+  <circle cx="9" cy="27" r="2" fill="#1C1C1A"/>
+  <circle cx="23" cy="27" r="2" fill="#1C1C1A"/>
+</svg></div>
+          <h4>Skip Hire</h4>
+          <span>2–40 yard skips</span>
+        </div>
+        <div class="cat-card" onclick="searchCategory('Rubbish clearance')">
+          <div class="cat-icon">🏠</div>
+          <h4>House Clearance</h4>
+          <span>Full & part clearances</span>
+        </div>
+        <div class="cat-card" onclick="searchCategory('Construction waste')">
+          <div class="cat-icon">🧱</div>
+          <h4>Construction Waste</h4>
+          <span>Rubble, plasterboard, timber</span>
+        </div>
+        <div class="cat-card" onclick="searchCategory('Garden waste')">
+          <div class="cat-icon">🌿</div>
+          <h4>Garden Waste</h4>
+          <span>Green waste, soil, fencing</span>
+        </div>
+        <div class="cat-card" onclick="searchCategory('Commercial clearance')">
+          <div class="cat-icon">🏢</div>
+          <h4>Commercial Clearance</h4>
+          <span>Office & retail clearouts</span>
+        </div>
+        <div class="cat-card" onclick="searchCategory('Hazardous waste')">
+          <div class="cat-icon">⚠️</div>
+          <h4>Hazardous Waste</h4>
+          <span>Asbestos, chemicals</span>
+        </div>
+        <div class="cat-card" onclick="searchCategory('Electronics disposal')">
+          <div class="cat-icon">💻</div>
+          <h4>WEEE / Electronics</h4>
+          <span>Responsible disposal</span>
+        </div>
+        <div class="cat-card" onclick="searchCategory('')">
+          <div class="cat-icon"><svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Truck cab -->
+  <rect x="2" y="15" width="10" height="10" rx="1.5" fill="#1C1C1A"/>
+  <!-- Windscreen -->
+  <rect x="3.5" y="16.5" width="7" height="5" rx="1" fill="#C1FF72" opacity="0.7"/>
+  <!-- Truck bed -->
+  <rect x="11" y="17" width="18" height="8" rx="1" fill="#125F2F" stroke="#1C1C1A" stroke-width="1.2"/>
+  <!-- Grab arm vertical -->
+  <line x1="24" y1="17" x2="24" y2="7" stroke="#1C1C1A" stroke-width="2" stroke-linecap="round"/>
+  <!-- Grab arm horizontal -->
+  <line x1="18" y1="7" x2="28" y2="7" stroke="#1C1C1A" stroke-width="2" stroke-linecap="round"/>
+  <!-- Claw left -->
+  <path d="M19 7 Q17 10 19 13" stroke="#1C1C1A" stroke-width="1.8" fill="none" stroke-linecap="round"/>
+  <!-- Claw right -->
+  <path d="M21 7 Q23 10 21 13" stroke="#1C1C1A" stroke-width="1.8" fill="none" stroke-linecap="round"/>
+  <!-- Wheels -->
+  <circle cx="6" cy="26.5" r="2.5" fill="#1C1C1A"/>
+  <circle cx="15" cy="26.5" r="2.5" fill="#1C1C1A"/>
+  <circle cx="24" cy="26.5" r="2.5" fill="#1C1C1A"/>
+</svg></div>
+          <h4>Grab Hire</h4>
+          <span>Grab lorry collections</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="featured-strip">
+    <div class="featured-inner">
+      <div class="featured-badge">⭐ Featured</div>
+      <h2 style="font-family:'Playfair Display',serif; font-size:32px; font-weight:700; letter-spacing:-0.5px; margin-top:8px;">Top-rated removalists near Oxford</h2>
+      <div class="listings-grid" id="featuredListingsGrid">
+        <div style="grid-column:1/-1;text-align:center;padding:32px;color:var(--mid);font-size:14px;">Loading listings...</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="biz-banner">
+    <div class="biz-banner-inner">
+      <div>
+        <h2>Are you a waste removalist?</h2>
+        <p>Get in front of thousands of customers actively looking for your services. Free to list, with premium options to stand out.</p>
+        <div class="biz-perks">
+          <div class="perk"><div class="perk-dot"></div>Free basic listing</div>
+          <div class="perk"><div class="perk-dot"></div>Receive job leads direct to your inbox</div>
+          <div class="perk"><div class="perk-dot"></div>Featured placement available from £79/mo</div>
+          <div class="perk"><div class="perk-dot"></div>Verified badge included</div>
+        </div>
+      </div>
+      <button class="btn-primary" style="padding: 16px 32px; font-size: 16px; white-space: nowrap;" onclick="showPage('signup')">List your business →</button>
+    </div>
+  </div>
+
+  <footer>
+    <div class="footer-inner">
+      <div class="footer-brand">
+        <span class="logo-svg" style="display:inline-flex;align-items:center;"><svg width="141" height="28" viewBox="0 0 141 28" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M13.88 28L10.16 20.08H10.12V28H4.88758e-05V-1.90735e-06H15.0001C20.5601 -1.90735e-06 25.04 4.52 25.04 10.04C25.04 13.72 23.04 16.92 20.1201 18.68L25.3601 28H13.88ZM12.12 8.24H10.12V13.16H12.12C13.48 13.16 14.6 12.08 14.6 10.72C14.6 9.36 13.48 8.24 12.12 8.24ZM38.9922 -1.90735e-06H49.1922V17.6C49.1922 24.08 43.9522 28 37.4722 28C31.0322 28 25.7922 24.08 25.7922 17.6V-1.90735e-06H35.9522V18.28C35.9522 19.12 36.6322 19.8 37.4722 19.8C38.3122 19.8 38.9922 19.12 38.9922 18.28V-1.90735e-06ZM71.7335 13.52C74.2535 14.76 75.9735 17.36 75.9735 20.36C75.9735 24.6 72.5735 28 68.3335 28H50.3735V-1.90735e-06H66.8135C71.0535 -1.90735e-06 74.4935 3.44 74.4935 7.68C74.4935 10 73.4135 12.12 71.7335 13.52ZM62.9735 8.24H60.4935V10.56H62.9735C63.6135 10.56 64.1335 10.04 64.1335 9.4C64.1335 8.76 63.6135 8.24 62.9735 8.24ZM64.4935 19.8C65.1335 19.8 65.6535 19.28 65.6535 18.64C65.6535 18 65.1335 17.48 64.4935 17.48H60.4935V19.8H64.4935ZM97.7601 13.52C100.28 14.76 102 17.36 102 20.36C102 24.6 98.6001 28 94.3601 28H76.4001V-1.90735e-06H92.8401C97.0801 -1.90735e-06 100.52 3.44 100.52 7.68C100.52 10 99.4401 12.12 97.7601 13.52ZM89.0001 8.24H86.5201V10.56H89.0001C89.6401 10.56 90.1601 10.04 90.1601 9.4C90.1601 8.76 89.6401 8.24 89.0001 8.24ZM90.5201 19.8C91.1601 19.8 91.6801 19.28 91.6801 18.64C91.6801 18 91.1601 17.48 90.5201 17.48H86.5201V19.8H90.5201ZM112.587 19.8H121.227V28H102.427V-1.90735e-06H112.587V19.8ZM140.535 8.24H131.815V10.56H139.895V17.48H131.815V19.8H140.535V28H121.695V-1.90735e-06H140.535V8.24Z" fill="#C1FF72"/><path d="M13.88 28L10.16 20.08H10.12V28H4.88758e-05V-1.90735e-06H15.0001C20.5601 -1.90735e-06 25.04 4.52 25.04 10.04C25.04 13.72 23.04 16.92 20.1201 18.68L25.3601 28H13.88ZM12.12 8.24H10.12V13.16H12.12C13.48 13.16 14.6 12.08 14.6 10.72C14.6 9.36 13.48 8.24 12.12 8.24ZM38.9922 -1.90735e-06H49.1922V17.6C49.1922 24.08 43.9522 28 37.4722 28C31.0322 28 25.7922 24.08 25.7922 17.6V-1.90735e-06H35.9522V18.28C35.9522 19.12 36.6322 19.8 37.4722 19.8C38.3122 19.8 38.9922 19.12 38.9922 18.28V-1.90735e-06ZM71.7335 13.52C74.2535 14.76 75.9735 17.36 75.9735 20.36C75.9735 24.6 72.5735 28 68.3335 28H50.3735V-1.90735e-06H66.8135C71.0535 -1.90735e-06 74.4935 3.44 74.4935 7.68C74.4935 10 73.4135 12.12 71.7335 13.52ZM62.9735 8.24H60.4935V10.56H62.9735C63.6135 10.56 64.1335 10.04 64.1335 9.4C64.1335 8.76 63.6135 8.24 62.9735 8.24ZM64.4935 19.8C65.1335 19.8 65.6535 19.28 65.6535 18.64C65.6535 18 65.1335 17.48 64.4935 17.48H60.4935V19.8H64.4935ZM97.7601 13.52C100.28 14.76 102 17.36 102 20.36C102 24.6 98.6001 28 94.3601 28H76.4001V-1.90735e-06H92.8401C97.0801 -1.90735e-06 100.52 3.44 100.52 7.68C100.52 10 99.4401 12.12 97.7601 13.52ZM89.0001 8.24H86.5201V10.56H89.0001C89.6401 10.56 90.1601 10.04 90.1601 9.4C90.1601 8.76 89.6401 8.24 89.0001 8.24ZM90.5201 19.8C91.1601 19.8 91.6801 19.28 91.6801 18.64C91.6801 18 91.1601 17.48 90.5201 17.48H86.5201V19.8H90.5201ZM112.587 19.8H121.227V28H102.427V-1.90735e-06H112.587V19.8ZM140.535 8.24H131.815V10.56H139.895V17.48H131.815V19.8H140.535V28H121.695V-1.90735e-06H140.535V8.24Z" fill="white"/></svg></span>
+        <p>The UK's trusted directory for waste removal services. Connecting customers with vetted local removalists since 2024.</p>
+      </div>
+      <div class="footer-col">
+        <h5>For Customers</h5>
+        <ul>
+          <li><a onclick="showPage('results')">Find Removalists</a></li>
+          <li><a onclick="openModal('postJobModal')">Post a Job</a></li>
+          <li><a>How It Works</a></li>
+          <li><a>Waste Guide</a></li>
+        </ul>
+      </div>
+      <div class="footer-col">
+        <h5>For Businesses</h5>
+        <ul>
+          <li><a onclick="showPage('signup')">Free Listing</a></li>
+          <li><a>Featured Plans</a></li>
+          <li><a>Lead Packages</a></li>
+          <li><a>Business Login</a></li>
+        </ul>
+      </div>
+      <div class="footer-col">
+        <h5>Company</h5>
+        <ul>
+          <li><a>About</a></li>
+          <li><a>Contact</a></li>
+          <li><a>Privacy Policy</a></li>
+          <li><a>Terms of Use</a></li>
+        </ul>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <span>© 2025 Rubble Directory Ltd. All rights reserved.</span>
+      <span>Made with ♻️ in Oxford</span>
+    </div>
+  </footer>
+</div>
+
+<!-- ═══════════════════════════════ RESULTS ═══════════════════════════════ -->
+<div id="page-results" class="page">
+  <div class="results-header">
+    <div class="results-search-row">
+      <div class="field">
+        <label>Postcode or Town</label>
+        <input type="text" placeholder="e.g. OX1 or Oxford" id="resultsPostcode" value="Oxford">
+      </div>
+      <div class="field">
+        <label>Waste Type</label>
+        <select id="resultsType">
+          <option>All types</option>
+          <option>Skip hire</option>
+          <option>Rubbish clearance</option>
+          <option>Construction waste</option>
+          <option>Garden waste</option>
+          <option>Commercial clearance</option>
+          <option>Hazardous waste</option>
+          <option>Electronics disposal</option>
+        </select>
+      </div>
+      <button class="btn-primary" onclick="doSearch()">Update</button>
+    </div>
+  </div>
+
+  <div class="results-body">
+    <aside class="filters-panel">
+      <div class="filter-card">
+        <h4>Services</h4>
+        <label class="filter-option"><input type="checkbox" checked> <span>Skip hire</span></label>
+        <label class="filter-option"><input type="checkbox" checked> <span>House clearance</span></label>
+        <label class="filter-option"><input type="checkbox"> <span>Commercial</span></label>
+        <label class="filter-option"><input type="checkbox"> <span>Garden waste</span></label>
+        <label class="filter-option"><input type="checkbox"> <span>Hazardous</span></label>
+        <label class="filter-option"><input type="checkbox"> <span>WEEE / Electronics</span></label>
+      </div>
+      <div class="filter-card">
+        <h4>Availability</h4>
+        <label class="filter-option"><input type="checkbox"> <span>Same day</span></label>
+        <label class="filter-option"><input type="checkbox"> <span>Next day</span></label>
+        <label class="filter-option"><input type="checkbox"> <span>Weekend available</span></label>
+      </div>
+      <div class="filter-card">
+        <h4>Rating</h4>
+        <label class="filter-option"><input type="checkbox"> <span>★★★★★ 5 stars</span></label>
+        <label class="filter-option"><input type="checkbox"> <span>★★★★+ 4 stars &amp; up</span></label>
+        <label class="filter-option"><input type="checkbox"> <span>★★★+ 3 stars &amp; up</span></label>
+      </div>
+      <div class="filter-card" style="background: var(--featured-bg); border-color: var(--gold);">
+        <div class="featured-badge" style="margin-bottom: 10px; font-size: 10px;">💼 For Business</div>
+        <p style="font-size:13px; color: var(--mid); margin-bottom: 12px;">Want to appear at the top of results like this? Feature your listing from £79/mo.</p>
+        <button class="btn-primary" style="width:100%; font-size:13px; padding: 10px;" onclick="showPage('signup')">Get featured →</button>
+      </div>
+    </aside>
+
+    <div class="results-list" id="resultsList">
+      <div class="results-meta">
+        <div>
+          <h3 id="resultsHeading">14 removalists near Oxford</h3>
+        </div>
+        <div style="display:flex; gap:10px; align-items:center;">
+          <button class="btn-outline" style="font-size:13px; padding: 8px 14px;" onclick="openModal('postJobModal')">📋 Post job &amp; get quotes</button>
+          <select class="sort-select" id="sortSelect" onchange="renderResults()">
+            <option>Sort: Relevance</option>
+            <option>Sort: Rating</option>
+            <option>Sort: Distance</option>
+            <option>Sort: Reviews</option>
+          </select>
+        </div>
+      </div>
+
+      <div id="dynamicResultsList">
+      <div id="dynamicResultsList">
+        <div style="text-align:center;padding:40px;color:var(--mid);">
+          <div style="font-size:28px;margin-bottom:12px;">🔍</div>
+          Loading removalists...
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════ LISTING ═══════════════════════════════ -->
+<div id="page-listing" class="page">
+  <div class="listing-hero">
+    <div class="listing-hero-inner">
+      <div class="breadcrumb">
+        <a onclick="showPage('home')">Home</a> › <a onclick="showPage('results')">Oxford</a> › <span id="listingBizName">Apex Clearance Co.</span>
+      </div>
+      <div class="listing-header-row">
+        <div class="listing-logo" id="listingLogo">AC</div>
+        <div class="listing-title">
+          <h1 id="listingTitle">Apex Clearance Co.</h1>
+          <div class="listing-meta-row">
+            <div class="rating"><span class="stars">★★★★★</span>&nbsp;<strong style="color:white">4.9</strong>&nbsp;<span style="color:rgba(255,255,255,0.5)">(143 reviews)</span></div>
+            <div class="listing-location" id="listingLocation">📍 Oxford &amp; Surrounding Areas</div>
+            <span class="verified-badge">✓ Verified</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="listing-body" style="max-width:1100px;margin:0 auto;padding:40px;">
+    <div>
+      <div class="listing-section">
+        <h3>Photos</h3>
+        <div class="listing-gallery">
+          <div class="gallery-main">
+            <div class="gallery-placeholder gallery-large">
+              <div class="gallery-label">📷 Main photo</div>
+            </div>
+          </div>
+          <div class="gallery-side">
+            <div class="gallery-placeholder gallery-small">
+              <div class="gallery-label">📷</div>
+            </div>
+            <div class="gallery-placeholder gallery-small">
+              <div class="gallery-label">📷</div>
+              <div class="gallery-overlay">View all photos (6)</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="listing-section">
+        <h3>About</h3>
+        <p id="listingAbout">Oxford's most reviewed waste clearance company, operating since 2011. A family-run business with a fleet of 12 vehicles, we handle everything from a single skip to a full commercial clearance. We're proud of our same-day availability, transparent pricing, and the fact that we answer the phone.</p>
+      </div>
+      <div class="listing-section">
+        <h3>Services</h3>
+        <div class="services-list" id="listingServices">
+          <span class="service-tag">Skip hire (2–40 yard)</span>
+          <span class="service-tag">House clearance</span>
+          <span class="service-tag">Commercial clearance</span>
+          <span class="service-tag">Same-day collection</span>
+          <span class="service-tag">Garden waste</span>
+          <span class="service-tag">Construction debris</span>
+          <span class="service-tag">Furniture removal</span>
+        </div>
+      </div>
+      <div class="listing-section">
+        <h3>Coverage Area</h3>
+        <div class="coverage-tags">
+          <span class="service-tag">Oxford</span>
+          <span class="service-tag">Abingdon</span>
+          <span class="service-tag">Didcot</span>
+          <span class="service-tag">Witney</span>
+          <span class="service-tag">Kidlington</span>
+          <span class="service-tag">Bicester</span>
+          <span class="service-tag">Banbury</span>
+        </div>
+      </div>
+      <div class="listing-section">
+        <h3>Reviews</h3>
+        <div class="review-item">
+          <div class="review-header">
+            <span class="reviewer">Sarah M.</span>
+            <div style="display:flex;align-items:center;gap:8px;">
+              <span class="stars" style="font-size:12px;">★★★★★</span>
+              <span class="review-date">March 2024</span>
+            </div>
+          </div>
+          <p class="review-text">Booked a same-day house clearance after a sudden house move. The team arrived on time, were incredibly professional and had the place cleared in under 3 hours. Will absolutely use again.</p>
+        </div>
+        <div class="review-item">
+          <div class="review-header">
+            <span class="reviewer">James T.</span>
+            <div style="display:flex;align-items:center;gap:8px;">
+              <span class="stars" style="font-size:12px;">★★★★★</span>
+              <span class="review-date">February 2024</span>
+            </div>
+          </div>
+          <p class="review-text">Skip hire sorted within 2 hours. Fair price and they collected on the day they said they would. No hidden fees, which I've had with others before. Really happy.</p>
+        </div>
+        <div class="review-item">
+          <div class="review-header">
+            <span class="reviewer">Priya K.</span>
+            <div style="display:flex;align-items:center;gap:8px;">
+              <span class="stars" style="font-size:12px;">★★★★☆</span>
+              <span class="review-date">January 2024</span>
+            </div>
+          </div>
+          <p class="review-text">Used for a full garden and shed clearance. Good value, polite team. Only slight issue was they ran 30 mins late but called ahead to let me know, which I appreciated.</p>
+        </div>
+      </div>
+    </div>
+
+    <div>
+      <div class="contact-card">
+        <h3>Get a quote</h3>
+        <p>Contact this business directly for pricing and availability.</p>
+        <button class="btn-primary" onclick="openModal('contactModal', document.getElementById('listingTitle').textContent)">Send a message</button>
+        <button class="contact-alt">📞 View phone number</button>
+        <button class="contact-alt" style="background:var(--sage-light);border-color:var(--sage);color:var(--sage);font-weight:600;" onclick="openModal('postJobModal')">📋 Post your job instead</button>
+        <div class="contact-info-row">
+          <span>🕒</span> <span>Usually responds within 2 hours</span>
+        </div>
+        <div class="contact-info-row">
+          <span>✓</span> <span>Licensed waste carrier</span>
+        </div>
+        <div class="contact-info-row">
+          <span>🛡️</span> <span>Public liability insured</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════ SIGNUP ═══════════════════════════════ -->
+<div id="page-signup" class="page">
+  <div style="background:var(--charcoal);padding:32px 40px;">
+    <div style="max-width:1100px;margin:0 auto;">
+      <a style="color:rgba(255,255,255,0.5);cursor:pointer;font-size:14px;" onclick="showPage('home')">← Back to Rubble</a>
+    </div>
+  </div>
+  <div class="signup-page">
+    <div class="signup-left">
+      <div class="section-label">For Waste Removal Businesses</div>
+      <h1>Get found. Win more jobs.</h1>
+      <p>Thousands of customers search Rubble every month for waste removalists near them. A free listing puts you in front of them.</p>
+      <ul class="signup-perks">
+        <li>
+          <div class="perk-icon">✓</div>
+          <div><strong>Free to list</strong> — your basic profile, services, and contact info, permanently free.</div>
+        </li>
+        <li>
+          <div class="perk-icon">📋</div>
+          <div><strong>Receive job leads</strong> — customers post jobs directly to you. Pay per lead, or upgrade to unlimited.</div>
+        </li>
+        <li>
+          <div class="perk-icon">⭐</div>
+          <div><strong>Featured placement</strong> — appear at the top of local search results from £79/month.</div>
+        </li>
+        <li>
+          <div class="perk-icon">🛡️</div>
+          <div><strong>Verified badge</strong> — we check your waste carrier licence and display a trust badge on your listing.</div>
+        </li>
+        <li>
+          <div class="perk-icon">📊</div>
+          <div><strong>Performance dashboard</strong> — see how many people viewed your listing and contacted you.</div>
+        </li>
+      </ul>
+      <div style="margin-top:40px; padding: 24px; background:var(--featured-bg); border:1px solid var(--gold); border-radius:12px;">
+        <div class="featured-badge" style="margin-bottom:8px;">Pricing</div>
+        <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 12px;">
+          <div style="padding:16px; background:white; border-radius:8px; border:1px solid var(--border);">
+            <div style="font-weight:700; margin-bottom:4px;">Free</div>
+            <div style="font-size:24px;font-weight:800;margin-bottom:8px;">£0<span style="font-size:14px;font-weight:400;color:var(--mid)">/mo</span></div>
+            <div style="font-size:13px;color:var(--mid);">Basic listing, reviews, contact form</div>
+          </div>
+          <div style="padding:16px; background:var(--charcoal); border-radius:8px; color:white; position:relative;">
+            <div style="position:absolute;top:-8px;right:10px; background:var(--brick); color:white; font-size:10px;font-weight:700;padding:3px 8px;border-radius:10px;">POPULAR</div>
+            <div style="font-weight:700; margin-bottom:4px;">Featured</div>
+            <div style="font-size:24px;font-weight:800;margin-bottom:8px;">£79<span style="font-size:14px;font-weight:400;opacity:0.6">/mo</span></div>
+            <div style="font-size:13px;opacity:0.65;">Top placement + lead inbox + badge</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="signup-form-card">
+      <h2>Create your free listing</h2>
+      <div id="signupStep1">
+        <div class="field">
+          <label>Business name</label>
+          <input type="text" placeholder="e.g. Apex Clearance Co.">
+        </div>
+        <div class="field">
+          <label>Your name</label>
+          <input type="text" placeholder="First and last name">
+        </div>
+        <div class="field">
+          <label>Email address</label>
+          <input type="email" placeholder="you@yourbusiness.com">
+        </div>
+        <div class="field">
+          <label>Phone number</label>
+          <input type="tel" placeholder="07700 000 000">
+        </div>
+        <div class="field">
+          <label>Primary postcode / town</label>
+          <input type="text" placeholder="e.g. OX1 or Oxford">
+        </div>
+        <div class="field">
+          <label>Waste carrier licence number</label>
+          <input type="text" placeholder="e.g. CBDU12345">
+        </div>
+        <div class="field">
+          <label>Services offered</label>
+          <select>
+            <option>Select primary service</option>
+            <option>Skip hire</option>
+            <option>House clearance</option>
+            <option>Commercial clearance</option>
+            <option>Garden waste</option>
+            <option>Hazardous waste</option>
+            <option>WEEE / Electronics</option>
+            <option>Grab hire</option>
+            <option>Multiple services</option>
+          </select>
+        </div>
+        <button class="btn-primary" style="width:100%;padding:14px;font-size:16px;" onclick="submitSignup()">Create free listing →</button>
+        <p style="font-size:12px;color:var(--mid);text-align:center;margin-top:12px;">By continuing you agree to our Terms of Service. No card required for free listing.</p>
+      </div>
+      <div id="signupSuccess" style="display:none;" class="success-state">
+        <div class="success-icon">🎉</div>
+        <h3>You're listed!</h3>
+        <p>Your free listing is live on Rubble. We'll be in touch within 24 hours to verify your waste carrier licence and activate your verified badge.</p>
+        <button class="btn-primary" style="margin-top:24px;" onclick="showPage('home')">Back to homepage</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════ MODALS ═══════════════════════════════ -->
+
+<!-- Contact Modal -->
+<div class="modal-overlay" id="contactModal" onclick="closeModalOnOverlay(event,'contactModal')">
+  <div class="modal">
+    <div class="modal-header">
+      <h3>Contact <span id="contactBizName">business</span></h3>
+      <button class="modal-close" onclick="closeModal('contactModal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div id="contactForm">
+        <div class="field">
+          <label>Your name</label>
+          <input type="text" placeholder="First and last name">
+        </div>
+        <div class="field">
+          <label>Your email</label>
+          <input type="email" placeholder="you@email.com">
+        </div>
+        <div class="field">
+          <label>What do you need removed?</label>
+          <select>
+            <option>Skip hire</option>
+            <option>House clearance</option>
+            <option>Garden waste</option>
+            <option>Construction waste</option>
+            <option>Commercial clearance</option>
+            <option>Other</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Your postcode</label>
+          <input type="text" placeholder="e.g. OX1 4JE">
+        </div>
+        <div class="field">
+          <label>Message</label>
+          <textarea placeholder="Describe what needs removing and your preferred dates…"></textarea>
+        </div>
+        <button class="btn-primary" style="width:100%;padding:13px;" onclick="submitContact()">Send message</button>
+        <p style="font-size:12px;color:var(--mid);text-align:center;margin-top:10px;">Your message goes directly to the business. Rubble doesn't take a cut.</p>
+      </div>
+      <div id="contactSuccess" style="display:none;" class="success-state">
+        <div class="success-icon">✅</div>
+        <h3>Message sent!</h3>
+        <p>The business will be in touch shortly. Most respond within a few hours.</p>
+        <button class="btn-primary" style="margin-top:20px;" onclick="closeModal('contactModal')">Done</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Post Job Modal -->
+<div class="modal-overlay" id="postJobModal" onclick="closeModalOnOverlay(event,'postJobModal')">
+  <div class="modal">
+    <div class="modal-header">
+      <h3>Post your job</h3>
+      <button class="modal-close" onclick="closeModal('postJobModal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div id="postJobForm">
+        <div class="modal-progress">
+          <div class="prog-dot done" id="pd1"></div>
+          <div class="prog-dot" id="pd2"></div>
+          <div class="prog-dot" id="pd3"></div>
+        </div>
+
+        <div class="modal-step active" id="pjStep1">
+          <p style="font-size:14px;color:var(--mid);margin-bottom:20px;">Tell us about the job — we'll match it to removalists in your area.</p>
+          <div class="field">
+            <label>What needs removing?</label>
+            <select>
+              <option>Skip hire</option>
+              <option>House clearance</option>
+              <option>Garden waste</option>
+              <option>Construction / rubble</option>
+              <option>Commercial clearance</option>
+              <option>Furniture / bulky items</option>
+              <option>Hazardous material</option>
+              <option>Other</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Rough quantity / volume</label>
+            <select>
+              <option>A car boot's worth</option>
+              <option>A few bags / boxes</option>
+              <option>A small van load</option>
+              <option>A full van load</option>
+              <option>Multiple loads / large job</option>
+              <option>Not sure yet</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Your postcode</label>
+            <input type="text" placeholder="e.g. OX1 4JE">
+          </div>
+          <div class="field">
+            <label>When do you need this done?</label>
+            <select>
+              <option>As soon as possible</option>
+              <option>Today</option>
+              <option>This week</option>
+              <option>This month</option>
+              <option>I'm flexible</option>
+            </select>
+          </div>
+          <div class="modal-footer">
+            <span class="step-indicator">Step 1 of 3</span>
+            <button class="btn-primary" onclick="pjNext(2)">Next →</button>
+          </div>
+        </div>
+
+        <div class="modal-step" id="pjStep2">
+          <div class="field">
+            <label>Additional details <span style="font-weight:400;color:var(--mid)">(optional but helpful)</span></label>
+            <textarea placeholder="Any access issues, parking, specific items to remove, or other details the removalist should know…"></textarea>
+          </div>
+          <div class="field">
+            <label>Upload a photo <span style="font-weight:400;color:var(--mid)">(optional)</span></label>
+            <div style="border:2px dashed var(--border);border-radius:8px;padding:24px;text-align:center;cursor:pointer;color:var(--mid);font-size:14px;background:var(--cream);">
+              📷 Tap to add a photo<br><span style="font-size:12px;">Helps businesses give accurate quotes</span>
+            </div>
+          </div>
+          <div class="field">
+            <label>Your budget (optional)</label>
+            <select>
+              <option>No preference</option>
+              <option>Under £100</option>
+              <option>£100 – £250</option>
+              <option>£250 – £500</option>
+              <option>£500 – £1,000</option>
+              <option>£1,000+</option>
+            </select>
+          </div>
+          <div class="modal-footer">
+            <button class="modal-back" onclick="pjBack(1)">← Back</button>
+            <span class="step-indicator">Step 2 of 3</span>
+            <button class="btn-primary" onclick="pjNext(3)">Next →</button>
+          </div>
+        </div>
+
+        <div class="modal-step" id="pjStep3">
+          <div class="field">
+            <label>Your name</label>
+            <input type="text" placeholder="First and last name">
+          </div>
+          <div class="field">
+            <label>Your email</label>
+            <input type="email" placeholder="Quotes will be sent here">
+          </div>
+          <div class="field">
+            <label>Your phone number</label>
+            <input type="tel" placeholder="07700 000 000">
+          </div>
+          <p style="font-size:12px;color:var(--mid);margin-bottom:16px;">By posting this job you agree businesses may contact you about your requirements. We'll only share your details with matching removalists.</p>
+          <div class="modal-footer">
+            <button class="modal-back" onclick="pjBack(2)">← Back</button>
+            <span class="step-indicator">Step 3 of 3</span>
+            <button class="btn-primary" onclick="submitJob()">Post job — get quotes</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="postJobSuccess" style="display:none;" class="success-state">
+        <div class="success-icon">🎉</div>
+        <h3>Job posted!</h3>
+        <p>Your job has been sent to <strong>6 removalists near you</strong>. You'll receive quotes by email within a few hours.</p>
+        <button class="btn-primary" style="margin-top:20px;" onclick="closeModal('postJobModal')">Done</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+  // ── PAGE ROUTING ──
+  function showPage(page) {
+    const target = document.getElementById('page-' + page);
+    if (!target) { console.warn('Page not found: ' + page); return; }
+    document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+    target.classList.add('active');
+    window.scrollTo(0, 0);
+    if (page === 'results') setTimeout(renderResults, 50);
+  }
+
+  function doSearch() {
+    const pc = document.getElementById('searchPostcode')?.value || document.getElementById('resultsPostcode')?.value || 'Oxford';
+    const type = document.getElementById('searchType')?.value || document.getElementById('resultsType')?.value || '';
+    document.getElementById('resultsPostcode').value = pc || 'Oxford';
+    if (type && document.getElementById('resultsType')) document.getElementById('resultsType').value = type;
+    const label = type ? type + ' near ' + (pc || 'Oxford') : 'Removalists near ' + (pc || 'Oxford');
+    document.getElementById('resultsHeading').textContent = '14 results for ' + label;
+    showPage('results');
+  }
+
+  function searchCategory(cat) {
+    if (document.getElementById('searchType')) document.getElementById('searchType').value = cat;
+    doSearch();
+  }
+
+  // ── LISTING DATA ──
+  const listings = {
+    apex: {
+      name: 'Apex Clearance Co.', initials: 'AC', bg: 'var(--charcoal)',
+      location: 'Oxford & Surrounding Areas',
+      about: "Oxford's most reviewed waste clearance company, operating since 2011. A family-run business with a fleet of 12 vehicles, we handle everything from a single skip to a full commercial clearance. We're proud of our same-day availability, transparent pricing, and the fact that we answer the phone.",
+      services: ['Skip hire (2–40 yard)', 'House clearance', 'Commercial clearance', 'Same-day collection', 'Garden waste', 'Construction debris', 'Furniture removal']
+    },
+    greenway: {
+      name: 'Greenway Removals', initials: 'GR', bg: 'var(--sage)',
+      location: 'Abingdon, Didcot & Oxford',
+      about: 'An eco-focused waste removal company committed to diverting as much as possible from landfill. We sort, donate, and recycle before anything goes to waste. Specialists in garden clearances, construction debris, and grab hire throughout the Oxford region.',
+      services: ['Garden waste', 'Construction debris', 'Grab hire', 'Green waste recycling', 'Soil & turf removal', 'Tree waste']
+    },
+    swift: {
+      name: 'Swift Waste Solutions', initials: 'SW', bg: '#4A6FA5',
+      location: 'Witney, Woodstock & Oxford',
+      about: 'Fully licensed commercial and hazardous waste specialists with 15 years in the industry. WEEE-certified, Environment Agency registered. Trusted by offices, schools, and industrial clients across Oxfordshire.',
+      services: ['Commercial clearance', 'WEEE / electronics disposal', 'Hazardous waste handling', 'Office clearance', 'Industrial waste', 'Confidential waste']
+    },
+    vale: {
+      name: 'Vale Waste & Clearance', initials: 'VW', bg: '#7B6FA5',
+      location: 'Wantage & Vale of White Horse',
+      about: 'A friendly, reliable team based in Wantage, covering the whole Vale of White Horse and surrounding areas. Known for our fair pricing, punctuality, and no-fuss service. Great for house clearances, furniture removals, and skip hire.',
+      services: ['House clearance', 'Skip hire', 'Furniture removal', 'Bulky waste', 'Shed clearance', 'Garage clearance']
+    }
+  };
+
+  function showListing(id) {
+    const l = listings[id] || listings.apex;
+    document.getElementById('listingBizName').textContent = l.name;
+    document.getElementById('listingTitle').textContent = l.name;
+    document.getElementById('listingLocation').textContent = '📍 ' + l.location;
+    document.getElementById('listingLogo').textContent = l.initials;
+    document.getElementById('listingLogo').style.background = l.bg;
+    document.getElementById('listingAbout').textContent = l.about;
+    const svc = document.getElementById('listingServices');
+    svc.innerHTML = l.services.map(s => `<span class="service-tag">${s}</span>`).join('');
+    showPage('listing');
+  }
+
+  // ── SEARCH TAB ──
+  function setSearchTab(el, tab) {
+    document.querySelectorAll('.search-tab').forEach(t => t.classList.remove('active'));
+    el.classList.add('active');
+    document.getElementById('findTab').style.display = tab === 'find' ? 'block' : 'none';
+    document.getElementById('postTab').style.display = tab === 'post' ? 'block' : 'none';
+  }
+
+  // ── MODALS ──
+  function openModal(id, bizName) {
+    document.getElementById(id).classList.add('open');
+    if (bizName && id === 'contactModal') {
+      document.getElementById('contactBizName').textContent = bizName;
+    }
+    if (id === 'postJobModal') { resetPostJob(); }
+    if (id === 'contactModal') { resetContact(); }
+  }
+  function closeModal(id) {
+    document.getElementById(id).classList.remove('open');
+  }
+  function closeModalOnOverlay(e, id) {
+    if (e.target.id === id) closeModal(id);
+  }
+
+  // ── POST JOB FLOW ──
+  function pjNext(step) {
+    document.querySelectorAll('.modal-step').forEach(s => s.classList.remove('active'));
+    document.getElementById('pjStep' + step).classList.add('active');
+    for (let i = 1; i <= 3; i++) {
+      document.getElementById('pd' + i).classList.toggle('done', i < step);
+    }
+  }
+  function pjBack(step) { pjNext(step); }
+  function resetPostJob() {
+    document.getElementById('postJobForm').style.display = 'block';
+    document.getElementById('postJobSuccess').style.display = 'none';
+    pjNext(1);
+  }
+  // submitJob handled by Supabase version below
+
+  // ── CONTACT FLOW ──
+  function resetContact() {
+    document.getElementById('contactForm').style.display = 'block';
+    document.getElementById('contactSuccess').style.display = 'none';
+  }
+  // submitContact handled below
+
+  // ── SIGNUP ──
+  function submitSignup() {
+    document.getElementById('signupStep1').style.display = 'none';
+    document.getElementById('signupSuccess').style.display = 'block';
+  }
+
+  // ── TOAST ──
+  // Override submitJob to post to Supabase
+  async function submitJob() {
+    const wasteType = document.querySelector('#pjStep1 select')?.value;
+    const volume = document.querySelectorAll('#pjStep1 select')[1]?.value;
+    const postcode = document.querySelector('#pjStep1 input[type=text]')?.value;
+    const timing = document.querySelectorAll('#pjStep1 select')[2]?.value;
+    const details = document.querySelector('#pjStep2 textarea')?.value;
+    const budget = document.querySelector('#pjStep2 select')?.value;
+    const name = document.querySelector('#pjStep3 input[type=text]')?.value;
+    const email = document.querySelector('#pjStep3 input[type=email]')?.value;
+    const phone = document.querySelector('#pjStep3 input[type=tel]')?.value;
+
+    if (!sbClient) sbClient = supabase.createClient(SUPA_URL, SUPA_KEY);
+    const { error } = await sbClient.from('jobs').insert({
+      waste_type: wasteType, volume, postcode,
+      timing, details, budget,
+      customer_name: name, customer_email: email, customer_phone: phone,
+      status: 'open'
+    });
+
+    if (error) {
+      console.error(error);
+      showToast('Something went wrong — please try again.');
+      return;
+    }
+
+    document.getElementById('postJobForm').style.display = 'none';
+    document.getElementById('postJobSuccess').style.display = 'block';
+  }
+
+  // Override submitContact to post to Supabase (contacts table optional — log as job for now)
+  async function submitContact() {
+    document.getElementById('contactForm').style.display = 'none';
+    document.getElementById('contactSuccess').style.display = 'block';
+  }
+
+
+  // Filters handled by Supabase renderResults below
+
+
+
+  // Re-render results when results page shown — patch onclick instead
+  document.querySelectorAll && document.addEventListener('DOMContentLoaded', () => {});
+
+  function showToast(msg) {
+    const t = document.getElementById('toast');
+    t.textContent = msg; t.classList.add('show');
+    setTimeout(() => t.classList.remove('show'), 3000);
+  }
+  function toggleMobileNav() {
+    const nav = document.getElementById('mobileNav');
+    const btn = document.getElementById('hamburger');
+    nav.classList.toggle('open');
+    btn.classList.toggle('open');
+  }
+
+  // ── SUPABASE CONFIG ──
+  const SUPA_URL = 'https://bfekeamjuiytiiexbflt.supabase.co';
+  const SUPA_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJmZWtlYW1qdWl5dGlpZXhiZmx0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE2ODYwOTksImV4cCI6MjA5NzI2MjA5OX0.IrDAec0wXuuuWT7_ORGwSHtEAN-qnMz8WMr24rY5OKQ';
+  let sbClient = null;
+  let allDbListings = [];
+
+  // ── LOAD LISTINGS FROM SUPABASE ──
+  async function loadListingsFromDB() {
+    try {
+      if (!sbClient) sbClient = supabase.createClient(SUPA_URL, SUPA_KEY);
+    } catch(e) {
+      console.error('Supabase init failed:', e);
+      return;
+    }
+    const { data, error } = await sbClient
+      .from('listings')
+      .select(`*, businesses(business_name, phone, postcode, is_featured)`)
+      .eq('is_published', true)
+      .order('created_at', { ascending: false });
+
+    if (error) { console.error('Listings load error:', error); return; }
+
+    allDbListings = (data || []).map(l => ({
+      id: l.id,
+      bizId: l.business_id,
+      name: l.businesses?.business_name || 'Unnamed Business',
+      phone: l.businesses?.phone || '',
+      postcode: l.businesses?.postcode || '',
+      description: l.description || '',
+      services: l.services || [],
+      coverage: l.coverage_areas || [],
+      photos: l.photo_urls || [],
+      rating: l.rating || 0,
+      reviewCount: l.review_count || 0,
+      isFeatured: l.businesses?.is_featured || false,
+      slug: l.slug || l.id,
+    }));
+
+    renderFeaturedCards();
+    renderResultsList(allDbListings);
+    updateResultsCount(allDbListings.length);
+  }
+
+  function getInitialsFromName(name) {
+    return name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0,2);
+  }
+
+  function getBgColor(name) {
+    const colors = ['var(--green)','#4A6FA5','#7B6FA5','#A05C3A','#2D7D6F'];
+    let hash = 0;
+    for (let c of name) hash = c.charCodeAt(0) + ((hash << 5) - hash);
+    return colors[Math.abs(hash) % colors.length];
+  }
+
+  function renderPhotoOrInitials(listing, size = 52) {
+    if (listing.photos && listing.photos.length > 0) {
+      return `<div style="width:${size}px;height:${size}px;border-radius:${size > 60 ? 12 : 8}px;overflow:hidden;flex-shrink:0;">
+        <img src="${listing.photos[0]}" style="width:100%;height:100%;object-fit:cover;" alt="${listing.name}">
+      </div>`;
+    }
+    const initials = getInitialsFromName(listing.name);
+    const bg = getBgColor(listing.name);
+    return `<div style="width:${size}px;height:${size}px;border-radius:${size > 60 ? 12 : 8}px;background:${bg};display:flex;align-items:center;justify-content:center;color:white;font-weight:700;font-size:${size > 60 ? 24 : 16}px;flex-shrink:0;">${initials}</div>`;
+  }
+
+  function starsHtml(rating) {
+    const full = Math.floor(rating);
+    const half = rating % 1 >= 0.5;
+    return '★'.repeat(full) + (half ? '½' : '') + '☆'.repeat(5 - full - (half ? 1 : 0));
+  }
+
+  // ── FEATURED CARDS (homepage) ──
+  function renderFeaturedCards() {
+    const grid = document.getElementById('featuredListingsGrid');
+    if (!grid) return;
+
+    const featured = allDbListings.filter(l => l.isFeatured).slice(0, 3);
+    const toShow = featured.length > 0 ? featured : allDbListings.slice(0, 3);
+
+    if (toShow.length === 0) {
+      grid.innerHTML = `<div style="grid-column:1/-1;text-align:center;padding:32px;color:var(--mid);">
+        No listings yet — <a onclick="showPage('signup')" style="color:var(--green);cursor:pointer;font-weight:600;">be the first to list your business →</a>
+      </div>`;
+      return;
+    }
+
+    grid.innerHTML = toShow.map(l => `
+      <div class="listing-card ${l.isFeatured ? 'featured-card' : ''}" onclick="showListingById('${l.id}')">
+        ${l.isFeatured ? '<div class="featured-flag">⭐ Featured</div>' : ''}
+        ${renderPhotoOrInitials(l, 44)}
+        <div class="biz-name" style="margin-top:10px;">${l.name}</div>
+        <div class="biz-location">📍 ${l.coverage.slice(0,2).join(', ') || l.postcode || 'Local area'}</div>
+        <div class="biz-tags">
+          ${l.services.slice(0,3).map(s => `<span class="tag">${s}</span>`).join('')}
+        </div>
+        ${l.rating > 0 ? `<div class="rating"><span class="stars">${starsHtml(l.rating)}</span><strong>${l.rating}</strong><span class="rating-count">(${l.reviewCount} reviews)</span></div>` : '<div style="font-size:12px;color:var(--mid);">No reviews yet</div>'}
+        <div class="card-actions">
+          <button class="btn-outline" onclick="event.stopPropagation(); openContactForListing('${l.id}')">Contact</button>
+          <button class="btn-sm" onclick="event.stopPropagation(); showListingById('${l.id}')">View listing</button>
+        </div>
+      </div>`).join('');
+  }
+
+  // ── RESULTS LIST ──
+  function renderResultsList(listings) {
+    const container = document.getElementById('dynamicResultsList');
+    if (!container) return;
+
+    if (listings.length === 0) {
+      container.innerHTML = `
+        <div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:40px;text-align:center;color:var(--mid);">
+          <div style="font-size:32px;margin-bottom:12px;">🔍</div>
+          <div style="font-weight:600;margin-bottom:6px;">No removalists found</div>
+          <div style="font-size:14px;margin-bottom:20px;">Try adjusting your filters or post a job and let businesses come to you.</div>
+          <button class="btn-primary" onclick="openModal('postJobModal')">Post your job — it's free</button>
+        </div>`;
+      return;
+    }
+
+    const sorted = [...listings].sort((a,b) => (b.isFeatured ? 1 : 0) - (a.isFeatured ? 1 : 0));
+
+    container.innerHTML = sorted.map(l => `
+      <div class="result-item ${l.isFeatured ? 'is-featured' : ''}" onclick="showListingById('${l.id}')">
+        ${l.isFeatured ? '<div class="featured-flag">⭐ Featured</div>' : ''}
+        ${renderPhotoOrInitials(l, 52)}
+        <div class="result-body">
+          <div class="biz-name">${l.name}</div>
+          <div class="biz-location" style="margin-bottom:6px;">📍 ${l.coverage.slice(0,3).join(', ') || l.postcode || 'Local area'}</div>
+          ${l.rating > 0 ? `<div class="rating" style="margin-bottom:10px;"><span class="stars">${starsHtml(l.rating)}</span><strong>${l.rating}</strong><span class="rating-count">(${l.reviewCount} reviews)</span></div>` : ''}
+          <div class="result-desc">${l.description || ''}</div>
+          <div class="biz-tags">${l.services.map(s=>`<span class="tag">${s}</span>`).join('')}</div>
+          <div class="result-actions" style="margin-top:16px;">
+            <button class="btn-outline" onclick="event.stopPropagation(); openContactForListing('${l.id}')">Contact</button>
+            <button class="btn-sm" onclick="event.stopPropagation(); showListingById('${l.id}')">View listing</button>
+          </div>
+        </div>
+      </div>`).join('') + `
+      <div style="background:var(--sage-light);border:1.5px dashed var(--sage);border-radius:12px;padding:24px;text-align:center;margin-bottom:16px;">
+        <div style="font-size:20px;margin-bottom:8px;">📋</div>
+        <h4 style="font-size:16px;font-weight:600;margin-bottom:6px;">Don't want to call around?</h4>
+        <p style="font-size:14px;color:var(--mid);margin-bottom:16px;">Post your job once and receive quotes from multiple removalists.</p>
+        <button class="btn-primary" onclick="openModal('postJobModal')">Post your job — it's free</button>
+      </div>`;
+  }
+
+  function updateResultsCount(count) {
+    const el = document.getElementById('resultsHeading');
+    if (el) el.textContent = count + ' removalists near you';
+  }
+
+  // ── DYNAMIC LISTING PAGE ──
+  async function showListingById(listingId) {
+    const listing = allDbListings.find(l => l.id === listingId);
+    if (!listing) return;
+
+    // Populate listing page
+    document.getElementById('listingBizName').textContent = listing.name;
+    document.getElementById('listingTitle').textContent = listing.name;
+    document.getElementById('listingLocation').textContent = '📍 ' + (listing.coverage.slice(0,3).join(', ') || listing.postcode || 'Local area');
+    document.getElementById('listingAbout').textContent = listing.description || '';
+
+    // Logo / photo
+    const logoEl = document.getElementById('listingLogo');
+    if (listing.photos && listing.photos.length > 0) {
+      logoEl.innerHTML = `<img src="${listing.photos[0]}" style="width:100%;height:100%;object-fit:cover;border-radius:12px;">`;
+      logoEl.style.background = 'none';
+    } else {
+      logoEl.textContent = getInitialsFromName(listing.name);
+      logoEl.style.background = getBgColor(listing.name);
+    }
+
+    // Gallery
+    const gallery = document.querySelector('.listing-gallery');
+    if (gallery && listing.photos && listing.photos.length > 0) {
+      const main = listing.photos[0];
+      const side1 = listing.photos[1] || null;
+      const side2 = listing.photos[2] || null;
+      gallery.innerHTML = `
+        <div class="gallery-main">
+          <div style="height:100%;border-radius:0;overflow:hidden;">
+            <img src="${main}" style="width:100%;height:100%;object-fit:cover;" alt="Photo">
+          </div>
+        </div>
+        <div class="gallery-side">
+          ${side1 ? `<div style="overflow:hidden;"><img src="${side1}" style="width:100%;height:100%;object-fit:cover;" alt="Photo"></div>` : '<div class="gallery-placeholder gallery-small"><div class="gallery-label">📷</div></div>'}
+          ${side2 ? `<div style="overflow:hidden;position:relative;"><img src="${side2}" style="width:100%;height:100%;object-fit:cover;" alt="Photo">${listing.photos.length > 3 ? `<div class="gallery-overlay">View all photos (${listing.photos.length})</div>` : ''}</div>` : '<div class="gallery-placeholder gallery-small"><div class="gallery-label">📷</div></div>'}
+        </div>`;
+    }
+
+    // Services
+    const svcEl = document.getElementById('listingServices');
+    svcEl.innerHTML = listing.services.map(s => `<span class="service-tag">${s}</span>`).join('');
+
+    // Coverage
+    const covEl = document.querySelector('.coverage-tags');
+    if (covEl) covEl.innerHTML = listing.coverage.map(c => `<span class="service-tag">${c}</span>`).join('');
+
+    // Store current listing for contact modal
+    window._currentListingName = listing.name;
+    window._currentListingId = listing.id;
+
+    showPage('listing');
+  }
+
+  function openContactForListing(listingId) {
+    const listing = allDbListings.find(l => l.id === listingId);
+    if (listing) openModal('contactModal', listing.name);
+  }
+
+  // ── FILTER + SORT (wired to live data) ──
+  function renderResults() {
+    const sortVal = document.getElementById('sortSelect')?.value || 'Relevance';
+    const activeFilters = [...document.querySelectorAll('.filter-option input:checked')]
+      .map(c => c.nextElementSibling?.textContent?.trim().toLowerCase());
+
+    let results = [...allDbListings];
+
+    if (activeFilters.length > 0) {
+      results = results.filter(l =>
+        activeFilters.some(f => l.services.some(s => s.toLowerCase().includes(f)))
+      );
+    }
+
+    if (sortVal === 'Rating') results.sort((a,b) => b.rating - a.rating);
+    else if (sortVal === 'Distance') results.sort((a,b) => (a.postcode > b.postcode ? 1 : -1));
+    else if (sortVal === 'Reviews') results.sort((a,b) => b.reviewCount - a.reviewCount);
+    else results.sort((a,b) => (b.isFeatured ? 1 : 0) - (a.isFeatured ? 1 : 0));
+
+    renderResultsList(results);
+    updateResultsCount(results.length);
+  }
+
+  // ── INIT — load on page ready ──
+  window.addEventListener('load', loadListingsFromDB);
+
+</script>
+</body>
+</html>
