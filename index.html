@@ -1267,10 +1267,10 @@
         <p style="font-size:12px;color:var(--mid);text-align:center;margin-top:12px;">By continuing you agree to our Terms of Service. No card required for free listing.</p>
       </div>
       <div id="signupSuccess" style="display:none;" class="success-state">
-        <div class="success-icon">🎉</div>
-        <h3>You're listed!</h3>
-        <p>Your account is created and your details are saved. Head to your dashboard to finish your listing, add photos, and go live.</p>
-        <a href="/rubble-dashboard.html" class="btn-primary" style="margin-top:24px;display:inline-block;text-decoration:none;">Go to your dashboard →</a>
+        <div class="success-icon">📧</div>
+        <h3>Confirm your email</h3>
+        <p>Your account has been created and your details are saved. We&apos;ve sent a confirmation link to <strong id="suSuccessEmail">your email address</strong>. Click it to verify your email, then sign in to finish your listing — you won&apos;t need to re-enter anything.</p>
+        <a href="/rubble-dashboard.html" class="btn-primary" style="margin-top:24px;display:inline-block;text-decoration:none;">Go to sign in →</a>
         <button class="btn-outline" style="margin-top:12px;" onclick="showPage('home')">Back to homepage</button>
       </div>
     </div>
@@ -1599,11 +1599,23 @@ async function submitSignup() {
   try {
     var sb = getSb();
 
-    // 1. Create the auth account
+    // Create the auth account. All signup details are stored in user metadata so
+    // the business record + draft listing can be created on first authenticated
+    // load in the dashboard (after the user confirms their email). This keeps the
+    // writes RLS-safe, since signUp returns no session until the email is confirmed.
     var signUpRes = await sb.auth.signUp({
       email: email,
       password: password,
-      options: { data: { business_name: bizName, contact_name: name } }
+      options: {
+        emailRedirectTo: window.location.origin + '/rubble-dashboard.html',
+        data: {
+          business_name: bizName,
+          contact_name: name,
+          phone: phone,
+          postcode: postcode,
+          service: service
+        }
+      }
     });
     if (signUpRes.error) {
       showSignupError(signUpRes.error.message);
@@ -1611,40 +1623,8 @@ async function submitSignup() {
       return;
     }
 
-    var user = signUpRes.data && signUpRes.data.user;
-    if (user) {
-      // 2. Create the business record (mirrors dashboard signup)
-      var bizRes = await sb.from('businesses').insert({
-        id: user.id,
-        email: email,
-        business_name: bizName,
-        contact_name: name,
-        phone: phone,
-        postcode: postcode,
-        credits: 3
-      });
-      if (bizRes.error) console.error('Business insert error:', bizRes.error);
-
-      // 3. Log the free trial credits
-      var txRes = await sb.from('credit_transactions').insert({
-        business_id: user.id, amount: 3, type: 'free_trial'
-      });
-      if (txRes.error) console.error('Credit log error:', txRes.error);
-
-      // 4. Seed a draft listing so the dashboard pre-fills their details
-      var slug = bizName.toLowerCase().replace(/[^a-z0-9]+/g, '-') + '-' + user.id.slice(0, 6);
-      var listingRes = await sb.from('listings').insert({
-        business_id: user.id,
-        slug: slug,
-        description: '',
-        services: service ? [service] : [],
-        coverage_areas: postcode ? [postcode] : [],
-        photo_urls: [],
-        is_published: false
-      });
-      if (listingRes.error) console.error('Listing seed error:', listingRes.error);
-    }
-
+    var emailEl = document.getElementById('suSuccessEmail');
+    if (emailEl) emailEl.textContent = email;
     document.getElementById('signupStep1').style.display = 'none';
     document.getElementById('signupSuccess').style.display = 'block';
   } catch (e) {
