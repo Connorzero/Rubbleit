@@ -1222,31 +1222,35 @@
       <div id="signupStep1">
         <div class="field">
           <label>Business name</label>
-          <input type="text" placeholder="e.g. Apex Clearance Co.">
+          <input id="suBizName" type="text" placeholder="e.g. Apex Clearance Co.">
         </div>
         <div class="field">
           <label>Your name</label>
-          <input type="text" placeholder="First and last name">
+          <input id="suName" type="text" placeholder="First and last name">
         </div>
         <div class="field">
           <label>Email address</label>
-          <input type="email" placeholder="you@yourbusiness.com">
+          <input id="suEmail" type="email" placeholder="you@yourbusiness.com">
+        </div>
+        <div class="field">
+          <label>Password</label>
+          <input id="suPassword" type="password" placeholder="At least 8 characters">
         </div>
         <div class="field">
           <label>Phone number</label>
-          <input type="tel" placeholder="07700 000 000">
+          <input id="suPhone" type="tel" placeholder="07700 000 000">
         </div>
         <div class="field">
           <label>Primary postcode / town</label>
-          <input type="text" placeholder="e.g. OX1 or Oxford">
+          <input id="suPostcode" type="text" placeholder="e.g. OX1 or Oxford">
         </div>
         <div class="field">
           <label>Waste carrier licence number</label>
-          <input type="text" placeholder="e.g. CBDU12345">
+          <input id="suLicence" type="text" placeholder="e.g. CBDU12345">
         </div>
         <div class="field">
           <label>Services offered</label>
-          <select>
+          <select id="suService">
             <option>Select primary service</option>
             <option>Skip hire</option>
             <option>House clearance</option>
@@ -1258,14 +1262,16 @@
             <option>Multiple services</option>
           </select>
         </div>
-        <button class="btn-primary" style="width:100%;padding:14px;font-size:16px;" onclick="submitSignup()">Create free listing →</button>
+        <div id="suError" style="display:none;background:#FEE2E2;color:#B91C1C;padding:12px 14px;border-radius:8px;font-size:14px;margin-bottom:14px;"></div>
+        <button id="suSubmitBtn" class="btn-primary" style="width:100%;padding:14px;font-size:16px;" onclick="submitSignup()">Create free listing →</button>
         <p style="font-size:12px;color:var(--mid);text-align:center;margin-top:12px;">By continuing you agree to our Terms of Service. No card required for free listing.</p>
       </div>
       <div id="signupSuccess" style="display:none;" class="success-state">
         <div class="success-icon">🎉</div>
         <h3>You're listed!</h3>
-        <p>Your free listing is live on Rubble. We'll be in touch within 24 hours to verify your waste carrier licence and activate your verified badge.</p>
-        <button class="btn-primary" style="margin-top:24px;" onclick="showPage('home')">Back to homepage</button>
+        <p>Your account is created and your details are saved. Head to your dashboard to finish your listing, add photos, and go live.</p>
+        <a href="/rubble-dashboard.html" class="btn-primary" style="margin-top:24px;display:inline-block;text-decoration:none;">Go to your dashboard →</a>
+        <button class="btn-outline" style="margin-top:12px;" onclick="showPage('home')">Back to homepage</button>
       </div>
     </div>
   </div>
@@ -1560,9 +1566,92 @@ function submitContact() {
 }
 
 // ── SIGNUP ──
-function submitSignup() {
-  document.getElementById('signupStep1').style.display = 'none';
-  document.getElementById('signupSuccess').style.display = 'block';
+function showSignupError(msg) {
+  var el = document.getElementById('suError');
+  if (el) { el.textContent = msg; el.style.display = 'block'; }
+}
+
+async function submitSignup() {
+  var errEl = document.getElementById('suError');
+  if (errEl) errEl.style.display = 'none';
+
+  var bizName  = (document.getElementById('suBizName').value || '').trim();
+  var name     = (document.getElementById('suName').value || '').trim();
+  var email    = (document.getElementById('suEmail').value || '').trim();
+  var password = document.getElementById('suPassword').value || '';
+  var phone    = (document.getElementById('suPhone').value || '').trim();
+  var postcode = (document.getElementById('suPostcode').value || '').trim();
+  var serviceEl = document.getElementById('suService');
+  var service  = serviceEl && serviceEl.value && serviceEl.value.indexOf('Select') !== 0 ? serviceEl.value : '';
+
+  if (!bizName || !email || !password) {
+    showSignupError('Please fill in your business name, email and password.');
+    return;
+  }
+  if (password.length < 8) {
+    showSignupError('Password must be at least 8 characters.');
+    return;
+  }
+
+  var btn = document.getElementById('suSubmitBtn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Creating your account…'; }
+
+  try {
+    var sb = getSb();
+
+    // 1. Create the auth account
+    var signUpRes = await sb.auth.signUp({
+      email: email,
+      password: password,
+      options: { data: { business_name: bizName, contact_name: name } }
+    });
+    if (signUpRes.error) {
+      showSignupError(signUpRes.error.message);
+      if (btn) { btn.disabled = false; btn.textContent = 'Create free listing →'; }
+      return;
+    }
+
+    var user = signUpRes.data && signUpRes.data.user;
+    if (user) {
+      // 2. Create the business record (mirrors dashboard signup)
+      var bizRes = await sb.from('businesses').insert({
+        id: user.id,
+        email: email,
+        business_name: bizName,
+        contact_name: name,
+        phone: phone,
+        postcode: postcode,
+        credits: 3
+      });
+      if (bizRes.error) console.error('Business insert error:', bizRes.error);
+
+      // 3. Log the free trial credits
+      var txRes = await sb.from('credit_transactions').insert({
+        business_id: user.id, amount: 3, type: 'free_trial'
+      });
+      if (txRes.error) console.error('Credit log error:', txRes.error);
+
+      // 4. Seed a draft listing so the dashboard pre-fills their details
+      var slug = bizName.toLowerCase().replace(/[^a-z0-9]+/g, '-') + '-' + user.id.slice(0, 6);
+      var listingRes = await sb.from('listings').insert({
+        business_id: user.id,
+        slug: slug,
+        description: '',
+        services: service ? [service] : [],
+        coverage_areas: postcode ? [postcode] : [],
+        photo_urls: [],
+        is_published: false
+      });
+      if (listingRes.error) console.error('Listing seed error:', listingRes.error);
+    }
+
+    document.getElementById('signupStep1').style.display = 'none';
+    document.getElementById('signupSuccess').style.display = 'block';
+  } catch (e) {
+    console.error('Signup error:', e);
+    showSignupError('Something went wrong. Please try again.');
+    if (btn) { btn.disabled = false; btn.textContent = 'Create free listing →'; }
+  }
 }
 
 // ── TOAST ──
