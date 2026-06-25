@@ -813,23 +813,30 @@ async function handleSignup() {
   if (!email || !password || !bizName) { showAuthError('Please fill in all required fields.'); return; }
   if (password.length < 8) { showAuthError('Password must be at least 8 characters.'); return; }
 
-  const { data, error } = await sb.auth.signUp({ email, password, options: { data: { business_name: bizName, contact_name: name } } });
+  const { data, error } = await sb.auth.signUp({
+    email,
+    password,
+    options: {
+      emailRedirectTo: window.location.origin + '/rubble-dashboard.html',
+      data: { business_name: bizName, contact_name: name, phone }
+    }
+  });
   if (error) { showAuthError(error.message); return; }
 
-  // Create business record
-  const { error: bizError } = await sb.from('businesses').insert({
-    id: data.user.id,
-    email, business_name: bizName, contact_name: name, phone, credits: 3
-  });
-  if (bizError) console.error(bizError);
+  // Email confirmation required: no session is returned until the user confirms.
+  // Show a "check your inbox" message. The business record is created on first
+  // authenticated load (see loadBusinessData) once they've confirmed and signed in.
+  if (!data.session) {
+    document.getElementById('signupForm').style.display = 'none';
+    document.getElementById('loginForm').style.display = 'none';
+    showAuthSuccess('Account created! We\'ve sent a confirmation link to ' + email + '. Click it to verify your email, then come back and sign in.');
+    return;
+  }
 
-  // Log free trial credits
-  await sb.from('credit_transactions').insert({ business_id: data.user.id, amount: 3, type: 'free_trial' });
-
+  // Confirmation disabled: a session exists, so proceed straight in.
   currentUser = data.user;
   await loadBusinessData();
-  document.getElementById('authScreen').style.display = 'none';
-  document.getElementById('onboardingScreen').style.display = 'block';
+  checkOnboarding();
 }
 
 async function handleLogin() {
@@ -876,10 +883,49 @@ function checkOnboarding() {
 async function loadBusinessData() {
   if (!currentUser) return;
 
-  const { data: biz } = await sb.from('businesses').select('*').eq('id', currentUser.id).single();
+  let { data: biz } = await sb.from('businesses').select('*').eq('id', currentUser.id).single();
+
+  // First sign-in after confirming email: create the business record from the
+  // details captured at signup (stored in user metadata). Runs with a valid
+  // session so it satisfies row-level security.
+  if (!biz) {
+    const meta = currentUser.user_metadata || {};
+    const { data: newBiz, error: createErr } = await sb.from('businesses').insert({
+      id: currentUser.id,
+      email: currentUser.email,
+      business_name: meta.business_name || '',
+      contact_name: meta.contact_name || '',
+      phone: meta.phone || '',
+      postcode: meta.postcode || '',
+      credits: 3
+    }).select().single();
+    if (createErr) {
+      console.error('Business creation error:', createErr);
+    } else {
+      biz = newBiz;
+      await sb.from('credit_transactions').insert({ business_id: currentUser.id, amount: 3, type: 'free_trial' });
+    }
+  }
   currentBusiness = biz;
 
-  const { data: listing } = await sb.from('listings').select('*').eq('business_id', currentUser.id).single();
+  let { data: listing } = await sb.from('listings').select('*').eq('business_id', currentUser.id).single();
+
+  // Seed a draft listing from signup details so nothing has to be re-entered.
+  if (!listing && biz) {
+    const meta = currentUser.user_metadata || {};
+    const slug = (biz.business_name || 'business').toLowerCase().replace(/[^a-z0-9]+/g, '-') + '-' + currentUser.id.slice(0, 6);
+    const { data: newListing, error: listErr } = await sb.from('listings').insert({
+      business_id: currentUser.id,
+      slug: slug,
+      description: '',
+      services: meta.service ? [meta.service] : [],
+      coverage_areas: meta.postcode ? [meta.postcode] : [],
+      photo_urls: [],
+      is_published: false
+    }).select().single();
+    if (listErr) console.error('Listing seed error:', listErr);
+    else listing = newListing;
+  }
   currentListing = listing;
 
   if (biz) {
