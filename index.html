@@ -934,7 +934,7 @@
           <li><a onclick="showPage('signup')">Free Listing</a></li>
           <li><a>Featured Plans</a></li>
           <li><a>Lead Packages</a></li>
-          <li><a>Business Login</a></li>
+          <li><a href="/rubble-dashboard.html">Business Login</a></li>
         </ul>
       </div>
       <div class="footer-col">
@@ -1026,7 +1026,6 @@
         </div>
       </div>
 
-      <div id="dynamicResultsList">
       <div id="dynamicResultsList">
         <div style="text-align:center;padding:40px;color:var(--mid);">
           <div style="font-size:28px;margin-bottom:12px;">🔍</div>
@@ -1149,7 +1148,7 @@
         <h3>Get a quote</h3>
         <p>Contact this business directly for pricing and availability.</p>
         <button class="btn-primary" onclick="openModal('contactModal', document.getElementById('listingTitle').textContent)">Send a message</button>
-        <button class="contact-alt">📞 View phone number</button>
+        <button class="contact-alt" onclick="revealPhone(this)">📞 View phone number</button>
         <button class="contact-alt" style="background:var(--sage-light);border-color:var(--sage);color:var(--sage);font-weight:600;" onclick="openModal('postJobModal')">📋 Post your job instead</button>
         <div class="contact-info-row">
           <span>🕒</span> <span>Usually responds within 2 hours</span>
@@ -1661,14 +1660,14 @@ function renderFeaturedCards() {
     var flag = l.isFeatured ? '<div class="featured-flag">⭐ Featured</div>' : '';
     var tags = l.services.slice(0,3).map(function(s) { return '<span class="tag">' + s + '</span>'; }).join('');
     html.push(
-      '<div class="listing-card ' + featured + '" onclick="showListingById('' + l.id + '')">' +
+      '<div class="listing-card ' + featured + '" onclick="showListingById(\'' + l.id + '\')">' +
       flag + photoOrInitials(l, 44) +
       '<div class="biz-name" style="margin-top:10px;">' + l.name + '</div>' +
       '<div class="biz-location">📍 ' + (l.coverage.slice(0,2).join(', ') || l.postcode || 'Local area') + '</div>' +
       '<div class="biz-tags">' + tags + '</div>' +
       '<div class="card-actions">' +
-        '<button class="btn-outline" onclick="event.stopPropagation();openModal('contactModal','' + l.name.replace(/'/g, '') + '')">Contact</button>' +
-        '<button class="btn-sm" onclick="event.stopPropagation();showListingById('' + l.id + '')">View listing</button>' +
+        '<button class="btn-outline" onclick="event.stopPropagation();openModal(\'contactModal\',\'' + l.name.replace(/'/g, '') + '\')">Contact</button>' +
+        '<button class="btn-sm" onclick="event.stopPropagation();showListingById(\'' + l.id + '\')">View listing</button>' +
       '</div></div>'
     );
   });
@@ -1679,7 +1678,7 @@ function renderResultsList(listings) {
   var container = document.getElementById('dynamicResultsList');
   if (!container) return;
   if (listings.length === 0) {
-    container.innerHTML = '<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:40px;text-align:center;color:var(--mid);"><div style="font-size:32px;margin-bottom:12px;">🔍</div><p style="font-weight:600;margin-bottom:6px;">No removalists found</p><p style="font-size:14px;margin-bottom:20px;">Try adjusting your filters or post a job.</p><button class="btn-primary" onclick="openModal('postJobModal')">Post your job free</button></div>';
+    container.innerHTML = '<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:40px;text-align:center;color:var(--mid);"><div style="font-size:32px;margin-bottom:12px;">🔍</div><p style="font-weight:600;margin-bottom:6px;">No removalists found</p><p style="font-size:14px;margin-bottom:20px;">Try adjusting your filters or post a job.</p><button class="btn-primary" onclick="openModal(\'postJobModal\')">Post your job free</button></div>';
     return;
   }
   var sorted = listings.slice().sort(function(a,b) { return (b.isFeatured?1:0) - (a.isFeatured?1:0); });
@@ -1690,7 +1689,7 @@ function renderResultsList(listings) {
     var tags = l.services.map(function(s) { return '<span class="tag">' + s + '</span>'; }).join('');
     var safeName = l.name.replace(/'/g, '');
     rows.push(
-      '<div class="result-item ' + featured + '" onclick="showListingById('' + l.id + '')">' +
+      '<div class="result-item ' + featured + '" onclick="showListingById(\'' + l.id + '\')">' +
       flag + photoOrInitials(l, 52) +
       '<div class="result-body">' +
         '<div class="biz-name">' + l.name + '</div>' +
@@ -1698,13 +1697,13 @@ function renderResultsList(listings) {
         '<div class="result-desc">' + (l.description || '') + '</div>' +
         '<div class="biz-tags">' + tags + '</div>' +
         '<div class="result-actions" style="margin-top:16px;">' +
-          '<button class="btn-outline" onclick="event.stopPropagation();openModal('contactModal','' + safeName + '')">Contact</button>' +
-          '<button class="btn-sm" onclick="event.stopPropagation();showListingById('' + l.id + '')">View listing</button>' +
+          '<button class="btn-outline" onclick="event.stopPropagation();openModal(\'contactModal\',\'' + safeName + '\')">Contact</button>' +
+          '<button class="btn-sm" onclick="event.stopPropagation();showListingById(\'' + l.id + '\')">View listing</button>' +
         '</div>' +
       '</div></div>'
     );
   });
-  rows.push('<div style="background:var(--sage-light);border:1.5px dashed var(--sage);border-radius:12px;padding:24px;text-align:center;margin-bottom:16px;"><p style="font-size:16px;font-weight:600;margin-bottom:6px;">Don't want to call around?</p><p style="font-size:14px;color:var(--mid);margin-bottom:16px;">Post your job once and receive quotes from multiple removalists.</p><button class="btn-primary" onclick="openModal('postJobModal')">Post your job — it's free</button></div>');
+  rows.push('<div style="background:var(--sage-light);border:1.5px dashed var(--sage);border-radius:12px;padding:24px;text-align:center;margin-bottom:16px;"><p style="font-size:16px;font-weight:600;margin-bottom:6px;">Don\'t want to call around?</p><p style="font-size:14px;color:var(--mid);margin-bottom:16px;">Post your job once and receive quotes from multiple removalists.</p><button class="btn-primary" onclick="openModal(\'postJobModal\')">Post your job — it\'s free</button></div>');
   container.innerHTML = rows.join('');
 }
 function updateResultsCount(count) {
@@ -1734,7 +1733,7 @@ function renderResults() {
 }
 
 async function showListingById(id) {
-  var l = allDbListings.find(function(x) { return x.id === id; });
+  var l = allDbListings.find(function(x) { return String(x.id) === String(id); });
   if (!l) return;
   document.getElementById('listingBizName').textContent = l.name;
   document.getElementById('listingTitle').textContent = l.name;
@@ -1751,7 +1750,18 @@ async function showListingById(id) {
   var svcEl = document.getElementById('listingServices');
   if (svcEl) svcEl.innerHTML = l.services.map(function(s) { return '<span class="service-tag">' + s + '</span>'; }).join('');
   window._currentListingName = l.name;
+  window._currentListingPhone = l.phone || '';
   showPage('listing');
+}
+
+function revealPhone(btn) {
+  var phone = window._currentListingPhone;
+  if (phone) {
+    btn.textContent = '📞 ' + phone;
+    btn.setAttribute('onclick', "window.location.href='tel:' + '" + phone.replace(/'/g, '') + "'");
+  } else {
+    showToast('No phone number listed — use "Send a message" instead.');
+  }
 }
 
 document.addEventListener('change', function(e) {
