@@ -1658,10 +1658,11 @@ function getSb() {
 async function loadListingsFromDB() {
   try {
     var sb = getSb();
+    // Reads from the public 'listing_cards' view, which exposes only safe,
+    // non-sensitive business + listing fields for published listings.
     var result = await sb
-      .from('listings')
-      .select('*, businesses(business_name, phone, postcode, is_featured)')
-      .eq('is_published', true)
+      .from('listing_cards')
+      .select('*')
       .order('created_at', { ascending: false });
 
     if (result.error) { console.error('Listings error:', result.error); return; }
@@ -1669,16 +1670,16 @@ async function loadListingsFromDB() {
     allDbListings = (result.data || []).map(function(l) {
       return {
         id: l.id,
-        name: l.businesses ? l.businesses.business_name : 'Unknown',
-        phone: l.businesses ? l.businesses.phone : '',
-        postcode: l.businesses ? l.businesses.postcode : '',
+        name: l.business_name || 'Unknown',
+        phone: l.phone || '',
+        postcode: l.postcode || '',
         description: l.description || '',
         services: l.services || [],
         coverage: l.coverage_areas || [],
         photos: l.photo_urls || [],
         rating: l.rating || 0,
         reviewCount: l.review_count || 0,
-        isFeatured: l.businesses ? l.businesses.is_featured : false,
+        isFeatured: l.is_featured || false,
       };
     });
 
