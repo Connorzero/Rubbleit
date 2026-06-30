@@ -162,6 +162,8 @@
     font-size: 11px; font-weight: 700; letter-spacing: 1.5px;
     text-transform: uppercase; color: #C1FF72; margin-bottom: 16px;
   }
+  /* Accessible variant for labels on light backgrounds */
+  .section-label.on-light { color: var(--charcoal); }
   .section h2 {
     font-family: 'Inter', sans-serif;
     font-size: clamp(28px, 4vw, 44px); font-weight: 700;
@@ -786,7 +788,7 @@
   </section>
 
   <div class="section">
-    <div class="section-label">How it works</div>
+        <div class="section-label on-light">How it works</div>
     <h2>Up and running in minutes</h2>
     <div class="steps-grid">
       <div class="step">
@@ -809,7 +811,7 @@
 
   <div style="background: var(--white); border-top: 1px solid var(--border); border-bottom: 1px solid var(--border);">
     <div class="section">
-      <div class="section-label">Browse by category</div>
+        <div class="section-label on-light">Browse by category</div>
       <h2>What are you clearing?</h2>
       <div class="cats-grid">
         <div class="cat-card" onclick="searchCategory('Skip hire')">
