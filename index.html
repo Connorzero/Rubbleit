@@ -1481,9 +1481,15 @@ function setSearchTab(el, tab) {
 
 // ── SEARCH ──
 function doSearch() {
-  var pc = document.getElementById('searchPostcode') ? document.getElementById('searchPostcode').value : document.getElementById('resultsPostcode').value;
-  var type = document.getElementById('searchType') ? document.getElementById('searchType').value : '';
-  if (document.getElementById('resultsPostcode')) document.getElementById('resultsPostcode').value = pc || 'Oxford';
+  // Both the homepage Search button and the results-page Update button call
+  // this. Pages are toggled with CSS (never removed), so both inputs always
+  // exist in the DOM — read from whichever field belongs to the active page.
+  var resultsEl = document.getElementById('resultsPostcode');
+  var searchEl = document.getElementById('searchPostcode');
+  var onResults = document.getElementById('page-results') && document.getElementById('page-results').classList.contains('active');
+  var sourceEl = (onResults && resultsEl) ? resultsEl : searchEl;
+  var pc = sourceEl ? sourceEl.value.trim() : '';
+  if (resultsEl) resultsEl.value = pc || 'Oxford';
   window._selectedCategory = null;
   showPage('results');
 }
