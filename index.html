@@ -1016,6 +1016,7 @@
       <div class="results-meta">
         <div>
           <h3 id="resultsHeading">14 removalists near Oxford</h3>
+          <div id="activeCategoryChip" style="display:none; margin-top:8px;"></div>
         </div>
         <div style="display:flex; gap:10px; align-items:center;">
           <button class="btn-outline" style="font-size:13px; padding: 8px 14px;" onclick="openModal('postJobModal')">📋 Post job &amp; get quotes</button>
@@ -1483,11 +1484,47 @@ function doSearch() {
   var pc = document.getElementById('searchPostcode') ? document.getElementById('searchPostcode').value : document.getElementById('resultsPostcode').value;
   var type = document.getElementById('searchType') ? document.getElementById('searchType').value : '';
   if (document.getElementById('resultsPostcode')) document.getElementById('resultsPostcode').value = pc || 'Oxford';
+  window._selectedCategory = null;
   showPage('results');
 }
 
+// Maps each homepage category tile to a friendly label and a keyword
+// used to match against each listing's free-text services array.
+var CATEGORY_MAP = {
+  'Skip hire':            { label: 'Skip Hire',            keyword: 'skip' },
+  'Rubbish clearance':    { label: 'House Clearance',      keyword: 'clearance' },
+  'Construction waste':   { label: 'Construction Waste',   keyword: 'construction' },
+  'Garden waste':         { label: 'Garden Waste',         keyword: 'garden' },
+  'Commercial clearance': { label: 'Commercial Clearance', keyword: 'commercial' },
+  'Hazardous waste':      { label: 'Hazardous Waste',      keyword: 'hazardous' },
+  'Electronics disposal': { label: 'WEEE / Electronics',   keyword: 'electronic' },
+  'grab':                 { label: 'Grab Hire',            keyword: 'grab' }
+};
+
 function searchCategory(cat) {
+  // Grab Hire tile passes an empty string — normalise it.
+  var key = cat || 'grab';
+  window._selectedCategory = CATEGORY_MAP[key] || null;
+  syncCategoryCheckboxes();
   showPage('results');
+}
+
+// Keep the sidebar service checkboxes in sync with the selected category
+// so the filters panel reflects what the user actually chose.
+function syncCategoryCheckboxes() {
+  var cat = window._selectedCategory;
+  var serviceCard = document.querySelector('.filters-panel .filter-card');
+  if (!serviceCard) return;
+  serviceCard.querySelectorAll('.filter-option input[type="checkbox"]').forEach(function(box) {
+    var label = box.nextElementSibling ? box.nextElementSibling.textContent.trim().toLowerCase() : '';
+    box.checked = !!(cat && cat.keyword && label.indexOf(cat.keyword) !== -1);
+  });
+}
+
+function clearCategory() {
+  window._selectedCategory = null;
+  syncCategoryCheckboxes();
+  renderResults();
 }
 
 // ── MOBILE NAV ──
@@ -1780,7 +1817,15 @@ function renderResultsList(listings) {
 }
 function updateResultsCount(count) {
   var el = document.getElementById('resultsHeading');
-  if (el) el.textContent = count + ' removalists near you';
+  if (!el) return;
+  var pcEl = document.getElementById('resultsPostcode');
+  var place = (pcEl && pcEl.value.trim()) ? pcEl.value.trim() : 'you';
+  var cat = window._selectedCategory;
+  if (cat && cat.label) {
+    el.textContent = count + ' ' + cat.label + ' removalists near ' + place;
+  } else {
+    el.textContent = count + ' removalists near ' + place;
+  }
 }
 
 function renderResults() {
@@ -1789,7 +1834,14 @@ function renderResults() {
     .map(function(c) { return c.nextElementSibling ? c.nextElementSibling.textContent.trim().toLowerCase() : ''; });
 
   var results = allDbListings.slice();
-  if (activeFilters.length > 0) {
+  var cat = window._selectedCategory;
+  if (cat && cat.keyword) {
+    // A category tile drives filtering directly via its keyword, so every
+    // category works even when it has no matching sidebar checkbox.
+    results = results.filter(function(l) {
+      return l.services.some(function(s) { return s.toLowerCase().includes(cat.keyword); });
+    });
+  } else if (activeFilters.length > 0) {
     results = results.filter(function(l) {
       return activeFilters.some(function(f) {
         return l.services.some(function(s) { return s.toLowerCase().includes(f); });
@@ -1802,6 +1854,26 @@ function renderResults() {
 
   renderResultsList(results);
   updateResultsCount(results.length);
+  renderCategoryChip();
+}
+
+// Shows a removable chip + tailored heading when the user arrived via a
+// "What are you clearing?" category tile.
+function renderCategoryChip() {
+  var chip = document.getElementById('activeCategoryChip');
+  var heading = document.getElementById('resultsHeading');
+  var cat = window._selectedCategory;
+  if (!chip) return;
+  if (cat && cat.label) {
+    chip.style.display = 'block';
+    chip.innerHTML = '<span style="display:inline-flex; align-items:center; gap:8px; background:var(--charcoal); color:var(--white); font-size:13px; font-weight:600; padding:6px 12px; border-radius:999px;">' +
+      cat.label +
+      '<button onclick="clearCategory()" aria-label="Clear ' + cat.label + ' filter" style="background:none; border:none; color:var(--white); font-size:15px; line-height:1; cursor:pointer; padding:0;">×</button>' +
+      '</span>';
+  } else {
+    chip.style.display = 'none';
+    chip.innerHTML = '';
+  }
 }
 
 async function showListingById(id) {
@@ -1836,9 +1908,14 @@ function revealPhone(btn) {
   }
 }
 
-document.addEventListener('change', function(e) {
-  if (e.target.closest && (e.target.closest('.filter-option') || e.target.id === 'sortSelect')) renderResults();
-});
+  document.addEventListener('change', function(e) {
+    if (!e.target.closest) return;
+    if (e.target.closest('.filter-option') || e.target.id === 'sortSelect') {
+      // A manual filter change takes over from a category tile selection.
+      if (e.target.closest('.filter-option')) window._selectedCategory = null;
+      renderResults();
+    }
+  });
 
 window.addEventListener('load', loadListingsFromDB);
 
