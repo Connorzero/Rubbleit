@@ -1,0 +1,12 @@
+{
+  "name": "rubbleit",
+  "private": true,
+  "version": "0.0.0",
+  "scripts": {
+    "dev": "http-server . -p 3000 -c-1 --silent",
+    "start": "http-server . -p 3000 -c-1 --silent"
+  },
+  "devDependencies": {
+    "http-server": "^14.1.1"
+  }
+}
