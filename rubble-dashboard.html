@@ -963,11 +963,23 @@ async function loadBusinessData() {
 }
 
 async function loadLeads() {
-  const { data: jobs } = await sb.from('jobs').select('*').order('created_at', { ascending: false }).limit(20);
+  // Fetch the job feed WITHOUT customer contact columns — those are protected
+  // server-side and only handed back for leads this business has paid to unlock.
+  const { data: jobs } = await sb.from('jobs')
+    .select('id, created_at, waste_type, town, postcode, volume, timing, budget, details, status')
+    .order('created_at', { ascending: false }).limit(20);
   if (!jobs || jobs.length === 0) return;
 
   const { data: unlocks } = await sb.from('lead_unlocks').select('job_id').eq('business_id', currentUser.id);
   const unlockedIds = new Set((unlocks || []).map(u => u.job_id));
+
+  // Pull contact details only for already-unlocked leads via a trusted function.
+  if (unlockedIds.size > 0) {
+    const { data: contacts } = await sb.rpc('my_unlocked_leads');
+    const byJob = {};
+    (contacts || []).forEach(c => { byJob[c.job_id] = c; });
+    jobs.forEach(j => { if (byJob[j.id]) Object.assign(j, byJob[j.id]); });
+  }
 
   const newCount = jobs.filter(j => !unlockedIds.has(j.id)).length;
   if (newCount > 0) {
@@ -1027,25 +1039,26 @@ function renderLeadCard(job, isUnlocked) {
 
 async function unlockLead(jobId, creditCost) {
   if (!currentBusiness) return;
-  if (currentBusiness.credits < creditCost) {
+
+  // All credit checking, deduction and contact release happens server-side in
+  // the unlock_lead function — the browser can neither cheat the price nor the
+  // balance, and only receives contact details after a successful charge.
+  const { data, error } = await sb.rpc('unlock_lead', { p_job_id: jobId });
+  if (error) { showToast('Something went wrong. Please try again.'); console.error(error); return; }
+
+  if (data && data.error === 'insufficient_credits') {
     document.getElementById('creditsModal').classList.add('open');
     return;
   }
 
-  const newCredits = currentBusiness.credits - creditCost;
-  const { error: updateError } = await sb.from('businesses').update({ credits: newCredits }).eq('id', currentUser.id);
-  if (updateError) { showToast('Something went wrong. Please try again.'); return; }
+  const remaining = data ? data.credits_remaining : currentBusiness.credits;
+  currentBusiness.credits = remaining;
+  updateCreditsUI(remaining);
 
-  await sb.from('lead_unlocks').insert({ business_id: currentUser.id, job_id: jobId, credits_spent: creditCost });
-  await sb.from('credit_transactions').insert({ business_id: currentUser.id, amount: -creditCost, type: 'spend' });
-
-  currentBusiness.credits = newCredits;
-  updateCreditsUI(newCredits);
-
-  // Re-fetch and re-render leads
+  // Re-fetch and re-render leads (unlocked contact now comes back via RPC)
   await loadLeads();
   document.getElementById('check3').style.color = 'var(--green)';
-  showToast(`Lead unlocked! ${newCredits} credits remaining.`);
+  showToast(`Lead unlocked! ${remaining} credits remaining.`);
 }
 
 async function loadCreditHistory() {
@@ -1110,7 +1123,7 @@ async function saveListing(publish) {
     return; 
   }
 
-  showToast(publish ? '✓ Listing published!' : '✓ Draft saved.');
+  showToast(publish ? '�� Listing published!' : '✓ Draft saved.');
   if (publish) {
     document.getElementById('overviewListingStatus').className = 'publish-status live';
     document.getElementById('overviewListingStatus').textContent = '✓ Live — visible to customers';
