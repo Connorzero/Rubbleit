@@ -890,20 +890,21 @@ async function loadBusinessData() {
   // session so it satisfies row-level security.
   if (!biz) {
     const meta = currentUser.user_metadata || {};
+    // Credits (default 3) and the matching free-trial ledger entry are set
+    // server-side by the DB default + on_business_created trigger — clients
+    // are no longer permitted to write the credits column.
     const { data: newBiz, error: createErr } = await sb.from('businesses').insert({
       id: currentUser.id,
       email: currentUser.email,
       business_name: meta.business_name || '',
       contact_name: meta.contact_name || '',
       phone: meta.phone || '',
-      postcode: meta.postcode || '',
-      credits: 3
+      postcode: meta.postcode || ''
     }).select().single();
     if (createErr) {
       console.error('Business creation error:', createErr);
     } else {
       biz = newBiz;
-      await sb.from('credit_transactions').insert({ business_id: currentUser.id, amount: 3, type: 'free_trial' });
     }
   }
   currentBusiness = biz;
