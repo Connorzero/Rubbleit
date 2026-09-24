@@ -1144,9 +1144,55 @@ function obNext(step) {
   }
 }
 
-function finishOnboarding() {
+async function finishOnboarding() {
+  if (!currentUser) { showToast('Please sign in first.'); return; }
+  const btn = document.querySelector('#obStep4 .btn-lime');
+
+  // Gather everything entered across the onboarding steps
+  const desc = document.getElementById('obDesc').value.trim();
+  const postcode = document.getElementById('obPostcode').value.trim();
+  const licence = document.getElementById('obLicence').value.trim();
+  const services = [...document.querySelectorAll('#obStep2 input[type=checkbox]:checked')].map(c => c.value);
+  const coverage = document.getElementById('obCoverage').value.split(',').map(s => s.trim()).filter(Boolean);
+
+  if (btn) { btn.disabled = true; btn.textContent = 'Publishing…'; }
+  const fail = (msg, err) => {
+    console.error('Onboarding publish error:', err);
+    showToast(msg + (err?.message ? ': ' + err.message : ''));
+    if (btn) { btn.disabled = false; btn.textContent = 'Go to my dashboard →'; }
+  };
+
+  // Save the business detail columns clients are permitted to write
+  const bizPatch = {};
+  if (postcode) bizPatch.postcode = postcode;
+  if (licence) bizPatch.licence_number = licence;
+  if (Object.keys(bizPatch).length) {
+    const { error } = await sb.from('businesses').update(bizPatch).eq('id', currentUser.id);
+    if (error) return fail('Could not save your details', error);
+  }
+
+  // Publish the listing with the onboarding answers
+  const listingPatch = {
+    description: desc,
+    services,
+    coverage_areas: coverage,
+    is_published: true,
+    updated_at: new Date().toISOString()
+  };
+  if (currentListing) {
+    const { error } = await sb.from('listings').update(listingPatch).eq('id', currentListing.id);
+    if (error) return fail('Could not publish your listing', error);
+  } else {
+    const slug = (currentBusiness?.business_name || 'business').toLowerCase().replace(/[^a-z0-9]+/g, '-') + '-' + currentUser.id.slice(0, 6);
+    const { data, error } = await sb.from('listings').insert({ business_id: currentUser.id, slug, ...listingPatch }).select().single();
+    if (error) return fail('Could not publish your listing', error);
+    currentListing = data;
+  }
+
   document.getElementById('onboardingScreen').style.display = 'none';
   showDashboard();
+  await loadBusinessData();
+  showToast('🎉 Your listing is live!');
 }
 
 // ── PHOTOS ──
