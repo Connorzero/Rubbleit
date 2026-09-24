@@ -1095,10 +1095,9 @@ async function saveListing(publish) {
   }).eq('id', currentUser.id);
   if (bizError) { showToast('Error saving business details.'); console.error(bizError); return; }
 
-  // Collect any already-uploaded photo URLs from previews
-  const existingUrls = [...document.querySelectorAll('#editPhotoPreviews .photo-preview')]
+  // Every uploaded/existing photo tile carries its public URL in data-url
+  const allPhotoUrls = [...document.querySelectorAll('#editPhotoPreviews .photo-preview')]
     .map(p => p.dataset.url).filter(Boolean);
-  const allPhotoUrls = [...new Set([...existingUrls, ...pendingPhotoUrls])];
 
   const listingData = {
     business_id: currentUser.id,
@@ -1154,6 +1153,7 @@ async function finishOnboarding() {
   const licence = document.getElementById('obLicence').value.trim();
   const services = [...document.querySelectorAll('#obStep2 input[type=checkbox]:checked')].map(c => c.value);
   const coverage = document.getElementById('obCoverage').value.split(',').map(s => s.trim()).filter(Boolean);
+  const photos = [...document.querySelectorAll('#photoPreviews .photo-preview')].map(p => p.dataset.url).filter(Boolean);
 
   if (btn) { btn.disabled = true; btn.textContent = 'Publishing…'; }
   const fail = (msg, err) => {
@@ -1176,6 +1176,7 @@ async function finishOnboarding() {
     description: desc,
     services,
     coverage_areas: coverage,
+    photo_urls: photos,
     is_published: true,
     updated_at: new Date().toISOString()
   };
@@ -1196,20 +1197,48 @@ async function finishOnboarding() {
 }
 
 // ── PHOTOS ──
-function handlePhotos(event) { renderPhotoGrid(event.target.files, 'photoPreviews'); }
-function handleEditPhotos(event) { renderPhotoGrid(event.target.files, 'editPhotoPreviews'); }
-function renderPhotoGrid(files, containerId) {
+function handlePhotos(event) { renderPhotoGrid(event.target.files, 'photoPreviews'); event.target.value = ''; }
+function handleEditPhotos(event) { renderPhotoGrid(event.target.files, 'editPhotoPreviews'); event.target.value = ''; }
+
+// Uploads each selected file to Supabase Storage and shows the resulting
+// public URL on the preview tile via data-url. Both the onboarding and edit
+// save paths read data-url off the tiles, so persistence is automatic.
+async function renderPhotoGrid(files, containerId) {
   const container = document.getElementById(containerId);
-  [...files].slice(0, 8).forEach(file => {
-    const reader = new FileReader();
-    reader.onload = e => {
-      const div = document.createElement('div');
-      div.className = 'photo-preview';
-      div.innerHTML = `<img src="${e.target.result}" alt="Photo"><button class="remove-photo" onclick="this.parentElement.remove()">✕</button>`;
-      container.appendChild(div);
-    };
-    reader.readAsDataURL(file);
-  });
+  if (!currentUser) { showToast('Please sign in first.'); return; }
+
+  const alreadyThere = container.querySelectorAll('.photo-preview').length;
+  const slots = Math.max(0, 8 - alreadyThere);
+  if (files.length > slots) showToast('You can have up to 8 photos.');
+
+  for (const file of [...files].slice(0, slots)) {
+    if (!file.type.startsWith('image/')) { showToast(`${file.name} is not an image.`); continue; }
+    if (file.size > 5 * 1024 * 1024) { showToast(`${file.name} is over 5MB.`); continue; }
+
+    const localUrl = URL.createObjectURL(file);
+    const div = document.createElement('div');
+    div.className = 'photo-preview';
+    div.innerHTML = `<img src="${localUrl}" alt="Photo">
+      <div class="photo-uploading" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.55);color:#fff;font-size:12px;font-weight:600;border-radius:inherit;">Uploading…</div>`;
+    container.appendChild(div);
+
+    try {
+      const ext = (file.name.split('.').pop() || 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg';
+      const path = `${currentUser.id}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+      const { error } = await sb.storage.from('listing-photos')
+        .upload(path, file, { cacheControl: '3600', upsert: false, contentType: file.type });
+      if (error) throw error;
+      const { data } = sb.storage.from('listing-photos').getPublicUrl(path);
+      div.dataset.url = data.publicUrl;
+      div.innerHTML = `<img src="${data.publicUrl}" alt="Photo"><button class="remove-photo" onclick="this.parentElement.remove()">✕</button>`;
+    } catch (err) {
+      console.error('Photo upload failed:', err);
+      showToast('Photo upload failed: ' + (err?.message || 'unknown error'));
+      div.remove();
+    } finally {
+      URL.revokeObjectURL(localUrl);
+    }
+  }
 }
 
 // ── LIVE PREVIEW ──
