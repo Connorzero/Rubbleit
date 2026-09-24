@@ -674,7 +674,7 @@
             <h3>Gravel</h3>
             <div class="price">£29<span>/one-time</span></div>
             <div class="credits-info">5 lead credits</div>
-            <a href="https://buy.stripe.com/cNi6oA8HN7Lrgvu5Ww8so01" target="_blank" class="btn-outline" style="display:block;text-align:center;text-decoration:none;padding:11px;">Buy Gravel pack</a>
+            <button type="button" onclick="startCheckout('gravel', this)" class="btn-outline" style="display:block;width:100%;text-align:center;padding:11px;">Buy Gravel pack</button>
             <div class="per-lead">£5.80 per lead</div>
           </div>
           <div class="pricing-card popular">
@@ -682,14 +682,14 @@
             <h3>Rubble</h3>
             <div class="price">£79<span>/one-time</span></div>
             <div class="credits-info">15 lead credits</div>
-            <a href="https://buy.stripe.com/14A14g3nt3vb0wwckU8so00" target="_blank" class="btn-primary" style="display:block;text-align:center;text-decoration:none;padding:11px;">Buy Rubble pack</a>
+            <button type="button" onclick="startCheckout('rubble', this)" class="btn-primary" style="display:block;width:100%;text-align:center;padding:11px;">Buy Rubble pack</button>
             <div class="per-lead">£5.27 per lead</div>
           </div>
           <div class="pricing-card" style="background:var(--green-dark);border-color:var(--green-dark);">
             <h3 style="color:var(--lime);">Boulder</h3>
             <div class="price" style="color:var(--white);">£29<span style="color:rgba(255,255,255,0.5);">/month</span></div>
             <div class="credits-info" style="color:rgba(255,255,255,0.6);">Unlimited leads + Featured listing</div>
-            <a href="https://buy.stripe.com/aFa7sE8HNfdT7YY5Ww8so02" target="_blank" class="btn-lime" style="display:block;text-align:center;text-decoration:none;padding:11px;">Go Boulder</a>
+            <button type="button" onclick="startCheckout('boulder', this)" class="btn-lime" style="display:block;width:100%;text-align:center;padding:11px;">Go Boulder</button>
             <div class="per-lead" style="color:rgba(255,255,255,0.4);">Best value for active businesses</div>
           </div>
         </div>
@@ -705,7 +705,7 @@
               <div class="featured-perk">Priority support</div>
             </div>
           </div>
-          <a href="https://buy.stripe.com/aFa7sE8HNfdT7YY5Ww8so02" target="_blank" class="btn-lime" style="width:auto;padding:14px 28px;text-decoration:none;white-space:nowrap;">Upgrade to Boulder →</a>
+          <button type="button" onclick="startCheckout('boulder', this)" class="btn-lime" style="width:auto;padding:14px 28px;white-space:nowrap;">Upgrade to Boulder →</button>
         </div>
 
         <div style="margin-top:28px;">
@@ -748,9 +748,9 @@
     <div class="modal-body">
       <p style="color:var(--mid);margin-bottom:20px;font-size:14px;">You've used your free trial credits. Top up to keep unlocking leads.</p>
       <div style="display:flex;flex-direction:column;gap:10px;">
-        <a href="https://buy.stripe.com/cNi6oA8HN7Lrgvu5Ww8so01" target="_blank" class="btn-outline" style="text-align:center;text-decoration:none;">Gravel — 5 leads for £29</a>
-        <a href="https://buy.stripe.com/14A14g3nt3vb0wwckU8so00" target="_blank" class="btn-primary" style="text-decoration:none;text-align:center;">Rubble — 15 leads for £79</a>
-        <a href="https://buy.stripe.com/aFa7sE8HNfdT7YY5Ww8so02" target="_blank" class="btn-lime" style="text-decoration:none;text-align:center;">Boulder — Unlimited for £29/mo</a>
+        <button type="button" onclick="startCheckout('gravel', this)" class="btn-outline" style="text-align:center;">Gravel — 5 leads for £29</button>
+        <button type="button" onclick="startCheckout('rubble', this)" class="btn-primary" style="text-align:center;">Rubble — 15 leads for £79</button>
+        <button type="button" onclick="startCheckout('boulder', this)" class="btn-lime" style="text-align:center;">Boulder — Unlimited for £29/mo</button>
       </div>
     </div>
   </div>
@@ -1310,6 +1310,52 @@ function showToast(msg) {
   t.textContent = msg; t.classList.add('show');
   setTimeout(() => t.classList.remove('show'), 3000);
 }
+
+// Kick off a Stripe Checkout Session via the server (prices live server-side)
+async function startCheckout(packId, btn) {
+  const { data: { session } } = await sb.auth.getSession();
+  if (!session) { showToast('Please sign in first.'); return; }
+
+  const original = btn ? btn.textContent : '';
+  if (btn) { btn.disabled = true; btn.textContent = 'Redirecting…'; }
+  try {
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/create-checkout`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
+      body: JSON.stringify({ packId, origin: window.location.origin })
+    });
+    const data = await res.json();
+    if (!res.ok || !data.url) throw new Error(data.error || 'Could not start checkout');
+    // Stripe can't render inside the preview iframe, so break out to the top window
+    if (window.self !== window.top) { window.open(data.url, '_blank'); }
+    else { window.location.href = data.url; }
+  } catch (err) {
+    console.error('Checkout error:', err);
+    showToast('Checkout failed: ' + (err.message || 'unknown error'));
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = original; }
+  }
+}
+
+// After returning from Stripe, confirm and refresh the (webhook-updated) balance
+(function handleCheckoutReturn() {
+  const params = new URLSearchParams(window.location.search);
+  const status = params.get('checkout');
+  if (!status) return;
+  history.replaceState({}, '', window.location.pathname);
+  if (status === 'success') {
+    showToast('✅ Payment received — updating your balance…');
+    // The webhook grants credits server-side; poll briefly so the UI catches up
+    let tries = 0;
+    const timer = setInterval(async () => {
+      tries++;
+      if (typeof loadBusinessData === 'function') await loadBusinessData();
+      if (tries >= 4) clearInterval(timer);
+    }, 1500);
+  } else if (status === 'cancelled') {
+    showToast('Checkout cancelled — no charge was made.');
+  }
+})();
 </script>
 </body>
 </html>
