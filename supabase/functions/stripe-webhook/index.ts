@@ -36,6 +36,13 @@ async function grantCredits(businessId: string, credits: number, sessionId: stri
   console.log(`Granted ${credits} credits to ${businessId} for ${sessionId}`);
 }
 
+// Newer Stripe API versions (e.g. dahlia) move current_period_end onto the items
+function periodEndOf(sub: Stripe.Subscription | null): number | null {
+  if (!sub) return null;
+  const s = sub as unknown as { current_period_end?: number; items?: { data?: { current_period_end?: number }[] } };
+  return s.current_period_end ?? s.items?.data?.[0]?.current_period_end ?? null;
+}
+
 async function setSubscription(businessId: string, status: string, periodEnd: number | null, customerId?: string) {
   const patch: Record<string, unknown> = { subscription_status: status };
   if (periodEnd) patch.subscription_current_period_end = new Date(periodEnd * 1000).toISOString();
@@ -78,7 +85,7 @@ Deno.serve(async (req) => {
           await setSubscription(
             businessId,
             sub?.status ?? "active",
-            sub?.current_period_end ?? null,
+            periodEndOf(sub),
             s.customer as string | undefined,
           );
         }
@@ -90,7 +97,7 @@ Deno.serve(async (req) => {
         const businessId = sub.metadata?.business_id;
         if (businessId) {
           const status = event.type === "customer.subscription.deleted" ? "cancelled" : sub.status;
-          await setSubscription(businessId, status, sub.current_period_end, sub.customer as string);
+          await setSubscription(businessId, status, periodEndOf(sub), sub.customer as string);
         }
         break;
       }
