@@ -310,7 +310,7 @@
     position: fixed; bottom: 32px; left: 50%; transform: translateX(-50%);
     background: var(--charcoal); color: var(--white); padding: 14px 24px;
     border-radius: 10px; font-size: 14px; font-weight: 500;
-    opacity: 0; transition: opacity 0.3s; z-index: 999; pointer-events: none; white-space: nowrap;
+    opacity: 0; transition: opacity 0.3s; z-index: 999; pointer-events: none; max-width: calc(100vw - 32px); text-align: center;
   }
   .toast.show { opacity: 1; }
 
@@ -1077,7 +1077,26 @@ async function loadCreditHistory() {
 
 // ── LISTING SAVE ──
 async function saveListing(publish) {
-  if (!currentUser) { showToast('Please sign in first.'); return; }
+  const buttons = document.querySelectorAll('#panel-listing button[onclick^="saveListing"]');
+  const labels = [...buttons].map(b => b.textContent);
+  buttons.forEach(b => { b.disabled = true; b.textContent = 'Saving…'; });
+  try {
+    await doSaveListing(publish);
+  } catch (err) {
+    // Without this, a thrown error inside an onclick async handler vanishes silently
+    console.error('saveListing failed:', err);
+    showToast('Could not save: ' + (err?.message || 'unexpected error'));
+  } finally {
+    buttons.forEach((b, i) => { b.disabled = false; b.textContent = labels[i]; });
+  }
+}
+
+async function doSaveListing(publish) {
+  if (!currentUser) {
+    const { data: { session } } = await sb.auth.getSession();
+    if (session) currentUser = session.user;
+  }
+  if (!currentUser) { showToast('Your session has expired. Please sign in again.'); return; }
 
   const services = [...document.querySelectorAll('#editServices input:checked')].map(c => c.value);
   const coverage = document.getElementById('editCoverage').value.split(',').map(s => s.trim()).filter(Boolean);
@@ -1088,12 +1107,13 @@ async function saveListing(publish) {
   const slug = bizName.toLowerCase().replace(/[^a-z0-9]+/g, '-') + '-' + currentUser.id.slice(0,6);
 
   // Update business
-  const { error: bizError } = await sb.from('businesses').update({
+  const { data: bizRows, error: bizError } = await sb.from('businesses').update({
     business_name: bizName,
     phone: document.getElementById('editPhone').value,
     postcode: document.getElementById('editPostcode').value,
-  }).eq('id', currentUser.id);
-  if (bizError) { showToast('Error saving business details.'); console.error(bizError); return; }
+  }).eq('id', currentUser.id).select('id');
+  if (bizError) { showToast('Error saving business details: ' + bizError.message); console.error(bizError); return; }
+  if (!bizRows?.length) { showToast('Could not find your business record. Please sign out and back in.'); return; }
 
   // Every uploaded/existing photo tile carries its public URL in data-url
   const allPhotoUrls = [...document.querySelectorAll('#editPhotoPreviews .photo-preview')]
@@ -1109,8 +1129,8 @@ async function saveListing(publish) {
 
   let saveError;
   if (currentListing) {
-    const { error } = await sb.from('listings').update(listingData).eq('id', currentListing.id);
-    saveError = error;
+    const { data: rows, error } = await sb.from('listings').update(listingData).eq('id', currentListing.id).select('id');
+    saveError = error || (!rows?.length ? { message: 'listing not found or not yours' } : null);
   } else {
     const { data: newListing, error } = await sb.from('listings').insert(listingData).select().single();
     saveError = error;
@@ -1123,7 +1143,7 @@ async function saveListing(publish) {
     return; 
   }
 
-  showToast(publish ? '�� Listing published!' : '✓ Draft saved.');
+  showToast(publish ? '✓ Listing published!' : '✓ Draft saved.');
   if (publish) {
     document.getElementById('overviewListingStatus').className = 'publish-status live';
     document.getElementById('overviewListingStatus').textContent = '✓ Live — visible to customers';
