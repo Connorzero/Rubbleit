@@ -674,7 +674,7 @@
             <h3>Gravel</h3>
             <div class="price">£29<span>/one-time</span></div>
             <div class="credits-info">5 lead credits</div>
-            <a href="https://buy.stripe.com/cNi6oA8HN7Lrgvu5Ww8so01" target="_blank" class="btn-outline" style="display:block;text-align:center;text-decoration:none;padding:11px;">Buy Gravel pack</a>
+            <button type="button" onclick="startCheckout('gravel', this)" class="btn-outline" style="display:block;width:100%;text-align:center;padding:11px;">Buy Gravel pack</button>
             <div class="per-lead">£5.80 per lead</div>
           </div>
           <div class="pricing-card popular">
@@ -682,14 +682,14 @@
             <h3>Rubble</h3>
             <div class="price">£79<span>/one-time</span></div>
             <div class="credits-info">15 lead credits</div>
-            <a href="https://buy.stripe.com/14A14g3nt3vb0wwckU8so00" target="_blank" class="btn-primary" style="display:block;text-align:center;text-decoration:none;padding:11px;">Buy Rubble pack</a>
+            <button type="button" onclick="startCheckout('rubble', this)" class="btn-primary" style="display:block;width:100%;text-align:center;padding:11px;">Buy Rubble pack</button>
             <div class="per-lead">£5.27 per lead</div>
           </div>
           <div class="pricing-card" style="background:var(--green-dark);border-color:var(--green-dark);">
             <h3 style="color:var(--lime);">Boulder</h3>
-            <div class="price" style="color:var(--white);">£79<span style="color:rgba(255,255,255,0.5);">/month</span></div>
+            <div class="price" style="color:var(--white);">£29<span style="color:rgba(255,255,255,0.5);">/month</span></div>
             <div class="credits-info" style="color:rgba(255,255,255,0.6);">Unlimited leads + Featured listing</div>
-            <a href="https://buy.stripe.com/aFa7sE8HNfdT7YY5Ww8so02" target="_blank" class="btn-lime" style="display:block;text-align:center;text-decoration:none;padding:11px;">Go Boulder</a>
+            <button type="button" onclick="startCheckout('boulder', this)" class="btn-lime" style="display:block;width:100%;text-align:center;padding:11px;">Go Boulder</button>
             <div class="per-lead" style="color:rgba(255,255,255,0.4);">Best value for active businesses</div>
           </div>
         </div>
@@ -705,7 +705,7 @@
               <div class="featured-perk">Priority support</div>
             </div>
           </div>
-          <a href="https://buy.stripe.com/aFa7sE8HNfdT7YY5Ww8so02" target="_blank" class="btn-lime" style="width:auto;padding:14px 28px;text-decoration:none;white-space:nowrap;">Upgrade to Boulder →</a>
+          <button type="button" onclick="startCheckout('boulder', this)" class="btn-lime" style="width:auto;padding:14px 28px;white-space:nowrap;">Upgrade to Boulder →</button>
         </div>
 
         <div style="margin-top:28px;">
@@ -748,9 +748,9 @@
     <div class="modal-body">
       <p style="color:var(--mid);margin-bottom:20px;font-size:14px;">You've used your free trial credits. Top up to keep unlocking leads.</p>
       <div style="display:flex;flex-direction:column;gap:10px;">
-        <a href="https://buy.stripe.com/cNi6oA8HN7Lrgvu5Ww8so01" target="_blank" class="btn-outline" style="text-align:center;text-decoration:none;">Gravel — 5 leads for £29</a>
-        <a href="https://buy.stripe.com/14A14g3nt3vb0wwckU8so00" target="_blank" class="btn-primary" style="text-decoration:none;text-align:center;">Rubble — 15 leads for £79</a>
-        <a href="https://buy.stripe.com/aFa7sE8HNfdT7YY5Ww8so02" target="_blank" class="btn-lime" style="text-decoration:none;text-align:center;">Boulder — Unlimited for £79/mo</a>
+        <button type="button" onclick="startCheckout('gravel', this)" class="btn-outline" style="text-align:center;">Gravel — 5 leads for £29</button>
+        <button type="button" onclick="startCheckout('rubble', this)" class="btn-primary" style="text-align:center;">Rubble — 15 leads for £79</button>
+        <button type="button" onclick="startCheckout('boulder', this)" class="btn-lime" style="text-align:center;">Boulder — Unlimited for £29/mo</button>
       </div>
     </div>
   </div>
@@ -890,20 +890,21 @@ async function loadBusinessData() {
   // session so it satisfies row-level security.
   if (!biz) {
     const meta = currentUser.user_metadata || {};
+    // Credits (default 3) and the matching free-trial ledger entry are set
+    // server-side by the DB default + on_business_created trigger — clients
+    // are no longer permitted to write the credits column.
     const { data: newBiz, error: createErr } = await sb.from('businesses').insert({
       id: currentUser.id,
       email: currentUser.email,
       business_name: meta.business_name || '',
       contact_name: meta.contact_name || '',
       phone: meta.phone || '',
-      postcode: meta.postcode || '',
-      credits: 3
+      postcode: meta.postcode || ''
     }).select().single();
     if (createErr) {
       console.error('Business creation error:', createErr);
     } else {
       biz = newBiz;
-      await sb.from('credit_transactions').insert({ business_id: currentUser.id, amount: 3, type: 'free_trial' });
     }
   }
   currentBusiness = biz;
@@ -963,11 +964,23 @@ async function loadBusinessData() {
 }
 
 async function loadLeads() {
-  const { data: jobs } = await sb.from('jobs').select('*').order('created_at', { ascending: false }).limit(20);
+  // Fetch the job feed WITHOUT customer contact columns — those are protected
+  // server-side and only handed back for leads this business has paid to unlock.
+  const { data: jobs } = await sb.from('jobs')
+    .select('id, created_at, waste_type, town, postcode, volume, timing, budget, details, status')
+    .order('created_at', { ascending: false }).limit(20);
   if (!jobs || jobs.length === 0) return;
 
   const { data: unlocks } = await sb.from('lead_unlocks').select('job_id').eq('business_id', currentUser.id);
   const unlockedIds = new Set((unlocks || []).map(u => u.job_id));
+
+  // Pull contact details only for already-unlocked leads via a trusted function.
+  if (unlockedIds.size > 0) {
+    const { data: contacts } = await sb.rpc('my_unlocked_leads');
+    const byJob = {};
+    (contacts || []).forEach(c => { byJob[c.job_id] = c; });
+    jobs.forEach(j => { if (byJob[j.id]) Object.assign(j, byJob[j.id]); });
+  }
 
   const newCount = jobs.filter(j => !unlockedIds.has(j.id)).length;
   if (newCount > 0) {
@@ -1027,25 +1040,26 @@ function renderLeadCard(job, isUnlocked) {
 
 async function unlockLead(jobId, creditCost) {
   if (!currentBusiness) return;
-  if (currentBusiness.credits < creditCost) {
+
+  // All credit checking, deduction and contact release happens server-side in
+  // the unlock_lead function — the browser can neither cheat the price nor the
+  // balance, and only receives contact details after a successful charge.
+  const { data, error } = await sb.rpc('unlock_lead', { p_job_id: jobId });
+  if (error) { showToast('Something went wrong. Please try again.'); console.error(error); return; }
+
+  if (data && data.error === 'insufficient_credits') {
     document.getElementById('creditsModal').classList.add('open');
     return;
   }
 
-  const newCredits = currentBusiness.credits - creditCost;
-  const { error: updateError } = await sb.from('businesses').update({ credits: newCredits }).eq('id', currentUser.id);
-  if (updateError) { showToast('Something went wrong. Please try again.'); return; }
+  const remaining = data ? data.credits_remaining : currentBusiness.credits;
+  currentBusiness.credits = remaining;
+  updateCreditsUI(remaining);
 
-  await sb.from('lead_unlocks').insert({ business_id: currentUser.id, job_id: jobId, credits_spent: creditCost });
-  await sb.from('credit_transactions').insert({ business_id: currentUser.id, amount: -creditCost, type: 'spend' });
-
-  currentBusiness.credits = newCredits;
-  updateCreditsUI(newCredits);
-
-  // Re-fetch and re-render leads
+  // Re-fetch and re-render leads (unlocked contact now comes back via RPC)
   await loadLeads();
   document.getElementById('check3').style.color = 'var(--green)';
-  showToast(`Lead unlocked! ${newCredits} credits remaining.`);
+  showToast(`Lead unlocked! ${remaining} credits remaining.`);
 }
 
 async function loadCreditHistory() {
@@ -1081,10 +1095,9 @@ async function saveListing(publish) {
   }).eq('id', currentUser.id);
   if (bizError) { showToast('Error saving business details.'); console.error(bizError); return; }
 
-  // Collect any already-uploaded photo URLs from previews
-  const existingUrls = [...document.querySelectorAll('#editPhotoPreviews .photo-preview')]
+  // Every uploaded/existing photo tile carries its public URL in data-url
+  const allPhotoUrls = [...document.querySelectorAll('#editPhotoPreviews .photo-preview')]
     .map(p => p.dataset.url).filter(Boolean);
-  const allPhotoUrls = [...new Set([...existingUrls, ...pendingPhotoUrls])];
 
   const listingData = {
     business_id: currentUser.id,
@@ -1110,7 +1123,7 @@ async function saveListing(publish) {
     return; 
   }
 
-  showToast(publish ? '✓ Listing published!' : '✓ Draft saved.');
+  showToast(publish ? '�� Listing published!' : '✓ Draft saved.');
   if (publish) {
     document.getElementById('overviewListingStatus').className = 'publish-status live';
     document.getElementById('overviewListingStatus').textContent = '✓ Live — visible to customers';
@@ -1130,26 +1143,102 @@ function obNext(step) {
   }
 }
 
-function finishOnboarding() {
+async function finishOnboarding() {
+  if (!currentUser) { showToast('Please sign in first.'); return; }
+  const btn = document.querySelector('#obStep4 .btn-lime');
+
+  // Gather everything entered across the onboarding steps
+  const desc = document.getElementById('obDesc').value.trim();
+  const postcode = document.getElementById('obPostcode').value.trim();
+  const licence = document.getElementById('obLicence').value.trim();
+  const services = [...document.querySelectorAll('#obStep2 input[type=checkbox]:checked')].map(c => c.value);
+  const coverage = document.getElementById('obCoverage').value.split(',').map(s => s.trim()).filter(Boolean);
+  const photos = [...document.querySelectorAll('#photoPreviews .photo-preview')].map(p => p.dataset.url).filter(Boolean);
+
+  if (btn) { btn.disabled = true; btn.textContent = 'Publishing…'; }
+  const fail = (msg, err) => {
+    console.error('Onboarding publish error:', err);
+    showToast(msg + (err?.message ? ': ' + err.message : ''));
+    if (btn) { btn.disabled = false; btn.textContent = 'Go to my dashboard →'; }
+  };
+
+  // Save the business detail columns clients are permitted to write
+  const bizPatch = {};
+  if (postcode) bizPatch.postcode = postcode;
+  if (licence) bizPatch.licence_number = licence;
+  if (Object.keys(bizPatch).length) {
+    const { error } = await sb.from('businesses').update(bizPatch).eq('id', currentUser.id);
+    if (error) return fail('Could not save your details', error);
+  }
+
+  // Publish the listing with the onboarding answers
+  const listingPatch = {
+    description: desc,
+    services,
+    coverage_areas: coverage,
+    photo_urls: photos,
+    is_published: true,
+    updated_at: new Date().toISOString()
+  };
+  if (currentListing) {
+    const { error } = await sb.from('listings').update(listingPatch).eq('id', currentListing.id);
+    if (error) return fail('Could not publish your listing', error);
+  } else {
+    const slug = (currentBusiness?.business_name || 'business').toLowerCase().replace(/[^a-z0-9]+/g, '-') + '-' + currentUser.id.slice(0, 6);
+    const { data, error } = await sb.from('listings').insert({ business_id: currentUser.id, slug, ...listingPatch }).select().single();
+    if (error) return fail('Could not publish your listing', error);
+    currentListing = data;
+  }
+
   document.getElementById('onboardingScreen').style.display = 'none';
   showDashboard();
+  await loadBusinessData();
+  showToast('🎉 Your listing is live!');
 }
 
 // ── PHOTOS ──
-function handlePhotos(event) { renderPhotoGrid(event.target.files, 'photoPreviews'); }
-function handleEditPhotos(event) { renderPhotoGrid(event.target.files, 'editPhotoPreviews'); }
-function renderPhotoGrid(files, containerId) {
+function handlePhotos(event) { renderPhotoGrid(event.target.files, 'photoPreviews'); event.target.value = ''; }
+function handleEditPhotos(event) { renderPhotoGrid(event.target.files, 'editPhotoPreviews'); event.target.value = ''; }
+
+// Uploads each selected file to Supabase Storage and shows the resulting
+// public URL on the preview tile via data-url. Both the onboarding and edit
+// save paths read data-url off the tiles, so persistence is automatic.
+async function renderPhotoGrid(files, containerId) {
   const container = document.getElementById(containerId);
-  [...files].slice(0, 8).forEach(file => {
-    const reader = new FileReader();
-    reader.onload = e => {
-      const div = document.createElement('div');
-      div.className = 'photo-preview';
-      div.innerHTML = `<img src="${e.target.result}" alt="Photo"><button class="remove-photo" onclick="this.parentElement.remove()">✕</button>`;
-      container.appendChild(div);
-    };
-    reader.readAsDataURL(file);
-  });
+  if (!currentUser) { showToast('Please sign in first.'); return; }
+
+  const alreadyThere = container.querySelectorAll('.photo-preview').length;
+  const slots = Math.max(0, 8 - alreadyThere);
+  if (files.length > slots) showToast('You can have up to 8 photos.');
+
+  for (const file of [...files].slice(0, slots)) {
+    if (!file.type.startsWith('image/')) { showToast(`${file.name} is not an image.`); continue; }
+    if (file.size > 5 * 1024 * 1024) { showToast(`${file.name} is over 5MB.`); continue; }
+
+    const localUrl = URL.createObjectURL(file);
+    const div = document.createElement('div');
+    div.className = 'photo-preview';
+    div.innerHTML = `<img src="${localUrl}" alt="Photo">
+      <div class="photo-uploading" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.55);color:#fff;font-size:12px;font-weight:600;border-radius:inherit;">Uploading…</div>`;
+    container.appendChild(div);
+
+    try {
+      const ext = (file.name.split('.').pop() || 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg';
+      const path = `${currentUser.id}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+      const { error } = await sb.storage.from('listing-photos')
+        .upload(path, file, { cacheControl: '3600', upsert: false, contentType: file.type });
+      if (error) throw error;
+      const { data } = sb.storage.from('listing-photos').getPublicUrl(path);
+      div.dataset.url = data.publicUrl;
+      div.innerHTML = `<img src="${data.publicUrl}" alt="Photo"><button class="remove-photo" onclick="this.parentElement.remove()">✕</button>`;
+    } catch (err) {
+      console.error('Photo upload failed:', err);
+      showToast('Photo upload failed: ' + (err?.message || 'unknown error'));
+      div.remove();
+    } finally {
+      URL.revokeObjectURL(localUrl);
+    }
+  }
 }
 
 // ── LIVE PREVIEW ──
@@ -1221,6 +1310,52 @@ function showToast(msg) {
   t.textContent = msg; t.classList.add('show');
   setTimeout(() => t.classList.remove('show'), 3000);
 }
+
+// Kick off a Stripe Checkout Session via the server (prices live server-side)
+async function startCheckout(packId, btn) {
+  const { data: { session } } = await sb.auth.getSession();
+  if (!session) { showToast('Please sign in first.'); return; }
+
+  const original = btn ? btn.textContent : '';
+  if (btn) { btn.disabled = true; btn.textContent = 'Redirecting…'; }
+  try {
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/create-checkout`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
+      body: JSON.stringify({ packId, origin: window.location.origin })
+    });
+    const data = await res.json();
+    if (!res.ok || !data.url) throw new Error(data.error || 'Could not start checkout');
+    // Stripe can't render inside the preview iframe, so break out to the top window
+    if (window.self !== window.top) { window.open(data.url, '_blank'); }
+    else { window.location.href = data.url; }
+  } catch (err) {
+    console.error('Checkout error:', err);
+    showToast('Checkout failed: ' + (err.message || 'unknown error'));
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = original; }
+  }
+}
+
+// After returning from Stripe, confirm and refresh the (webhook-updated) balance
+(function handleCheckoutReturn() {
+  const params = new URLSearchParams(window.location.search);
+  const status = params.get('checkout');
+  if (!status) return;
+  history.replaceState({}, '', window.location.pathname);
+  if (status === 'success') {
+    showToast('✅ Payment received — updating your balance…');
+    // The webhook grants credits server-side; poll briefly so the UI catches up
+    let tries = 0;
+    const timer = setInterval(async () => {
+      tries++;
+      if (typeof loadBusinessData === 'function') await loadBusinessData();
+      if (tries >= 4) clearInterval(timer);
+    }, 1500);
+  } else if (status === 'cancelled') {
+    showToast('Checkout cancelled — no charge was made.');
+  }
+})();
 </script>
 </body>
 </html>
