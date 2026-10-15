@@ -664,6 +664,18 @@
 
       <!-- CREDITS -->
       <div class="panel" id="panel-credits">
+        <div class="editor-card" id="membershipCard" style="display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:16px;margin-bottom:28px;">
+          <div style="min-width:0;">
+            <div style="font-size:12px;color:var(--mid);font-weight:600;text-transform:uppercase;letter-spacing:0.6px;margin-bottom:6px;">Membership</div>
+            <div style="font-size:20px;font-weight:800;color:var(--green);" id="membershipTitle">Not a member yet</div>
+            <div style="font-size:14px;color:var(--mid);margin-top:4px;line-height:1.5;" id="membershipDetail">£29/month after a 30-day free trial. Cancel any time.</div>
+          </div>
+          <div style="display:flex;gap:10px;flex-wrap:wrap;">
+            <button type="button" id="membershipJoinBtn" onclick="startCheckout('membership', this)" class="btn-lime" style="width:auto;padding:12px 22px;">Start free trial</button>
+            <button type="button" id="membershipPortalBtn" onclick="openBillingPortal(this)" class="btn-outline" style="width:auto;padding:12px 22px;display:none;">Manage billing</button>
+          </div>
+        </div>
+
         <div style="margin-bottom:28px;">
           <div style="font-size:14px;color:var(--mid);margin-bottom:4px;">Current balance</div>
           <div style="font-size:42px;font-weight:800;color:var(--green);" id="creditsBalance">3 <span style="font-size:18px;font-weight:400;color:var(--mid);">credits</span></div>
@@ -686,11 +698,11 @@
             <div class="per-lead">£5.27 per lead</div>
           </div>
           <div class="pricing-card" style="background:var(--green-dark);border-color:var(--green-dark);">
-            <h3 style="color:var(--lime);">Boulder</h3>
+            <h3 style="color:var(--lime);">Membership</h3>
             <div class="price" style="color:var(--white);">£29<span style="color:rgba(255,255,255,0.5);">/month</span></div>
             <div class="credits-info" style="color:rgba(255,255,255,0.6);">Unlimited leads + Featured listing</div>
-            <button type="button" onclick="startCheckout('boulder', this)" class="btn-lime" style="display:block;width:100%;text-align:center;padding:11px;">Go Boulder</button>
-            <div class="per-lead" style="color:rgba(255,255,255,0.4);">Best value for active businesses</div>
+            <button type="button" onclick="startCheckout('membership', this)" class="btn-lime membership-cta" style="display:block;width:100%;text-align:center;padding:11px;">Start 30-day free trial</button>
+            <div class="per-lead" style="color:rgba(255,255,255,0.4);">Card required, no charge for 30 days</div>
           </div>
         </div>
 
@@ -705,7 +717,7 @@
               <div class="featured-perk">Priority support</div>
             </div>
           </div>
-          <button type="button" onclick="startCheckout('boulder', this)" class="btn-lime" style="width:auto;padding:14px 28px;white-space:nowrap;">Upgrade to Boulder →</button>
+          <button type="button" onclick="startCheckout('membership', this)" class="btn-lime membership-cta" style="width:auto;padding:14px 28px;white-space:nowrap;">Start free trial →</button>
         </div>
 
         <div style="margin-top:28px;">
@@ -750,7 +762,7 @@
       <div style="display:flex;flex-direction:column;gap:10px;">
         <button type="button" onclick="startCheckout('gravel', this)" class="btn-outline" style="text-align:center;">Gravel — 5 leads for £29</button>
         <button type="button" onclick="startCheckout('rubble', this)" class="btn-primary" style="text-align:center;">Rubble — 15 leads for £79</button>
-        <button type="button" onclick="startCheckout('boulder', this)" class="btn-lime" style="text-align:center;">Boulder — Unlimited for £29/mo</button>
+        <button type="button" onclick="startCheckout('membership', this)" class="btn-lime membership-cta" style="text-align:center;">Membership — 30 days free, then £29/mo</button>
       </div>
     </div>
   </div>
@@ -931,6 +943,7 @@ async function loadBusinessData() {
 
   if (biz) {
     updateCreditsUI(biz.credits);
+    renderMembership(biz);
     document.getElementById('userAvatar').textContent = getInitials(biz.business_name);
     document.getElementById('previewInitials').textContent = getInitials(biz.business_name);
     document.getElementById('previewName').textContent = biz.business_name || 'Your business';
@@ -1357,14 +1370,83 @@ async function startCheckout(packId, btn) {
   }
 }
 
+function formatDate(iso) {
+  return iso ? new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }) : '';
+}
+
+// Membership state comes only from the Stripe webhook; this just reflects it
+function renderMembership(biz) {
+  const status = biz.subscription_status || 'none';
+  const isMember = ['trialing', 'active', 'past_due'].includes(status);
+  const hadTrial = !!biz.trial_ends_at;
+  const title = document.getElementById('membershipTitle');
+  const detail = document.getElementById('membershipDetail');
+  const joinBtn = document.getElementById('membershipJoinBtn');
+  const portalBtn = document.getElementById('membershipPortalBtn');
+  if (!title) return;
+
+  if (status === 'trialing') {
+    title.textContent = 'Free trial';
+    detail.textContent = `Your trial ends on ${formatDate(biz.trial_ends_at)}. After that it's £29/month on the card you added.`;
+  } else if (status === 'active') {
+    title.textContent = 'Member';
+    detail.textContent = `£29/month. Next payment on ${formatDate(biz.subscription_current_period_end)}.`;
+  } else if (status === 'past_due' || status === 'unpaid') {
+    title.textContent = 'Payment failed';
+    detail.textContent = 'We couldn\u2019t take your last payment. Update your card to keep your membership.';
+  } else {
+    title.textContent = hadTrial ? 'Membership ended' : 'Not a member yet';
+    detail.textContent = hadTrial
+      ? 'Rejoin for £29/month. Cancel any time.'
+      : '£29/month after a 30-day free trial. Cancel any time.';
+  }
+
+  const joinLabel = hadTrial ? 'Rejoin' : 'Start free trial';
+  joinBtn.textContent = joinLabel;
+  joinBtn.style.display = isMember ? 'none' : '';
+  portalBtn.style.display = biz.stripe_customer_id && (isMember || hadTrial) ? '' : 'none';
+  document.querySelectorAll('.membership-cta').forEach(b => {
+    b.style.display = isMember ? 'none' : '';
+    if (hadTrial) b.textContent = 'Rejoin membership';
+  });
+}
+
+async function openBillingPortal(btn) {
+  const { data: { session } } = await sb.auth.getSession();
+  if (!session) { showToast('Please sign in first.'); return; }
+  const original = btn ? btn.textContent : '';
+  if (btn) { btn.disabled = true; btn.textContent = 'Opening…'; }
+  try {
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/create-portal`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
+      body: JSON.stringify({ origin: window.location.origin })
+    });
+    const data = await res.json();
+    if (!res.ok || !data.url) throw new Error(data.error || 'Could not open billing');
+    if (window.self !== window.top) { window.open(data.url, '_blank'); }
+    else { window.location.href = data.url; }
+  } catch (err) {
+    console.error('Portal error:', err);
+    showToast('Could not open billing: ' + (err.message || 'unknown error'));
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = original; }
+  }
+}
+
 // After returning from Stripe, confirm and refresh the (webhook-updated) balance
 (function handleCheckoutReturn() {
   const params = new URLSearchParams(window.location.search);
   const status = params.get('checkout');
+  if (params.get('portal') === 'return') {
+    history.replaceState({}, '', window.location.pathname);
+    setTimeout(() => typeof loadBusinessData === 'function' && loadBusinessData(), 1500);
+    return;
+  }
   if (!status) return;
   history.replaceState({}, '', window.location.pathname);
   if (status === 'success') {
-    showToast('✅ Payment received — updating your balance…');
+    showToast('Done. Updating your account…');
     // The webhook grants credits server-side; poll briefly so the UI catches up
     let tries = 0;
     const timer = setInterval(async () => {
