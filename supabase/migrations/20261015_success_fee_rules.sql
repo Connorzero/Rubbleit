@@ -1,9 +1,10 @@
--- Success fee rules: fees are final once a customer accepts a quote.
--- Admins can issue account credit for fake/spam/duplicate jobs; no cash refunds.
--- Customers who say "no, it didn't go ahead" on 2+ accepted jobs are flagged
--- and blocked from posting until an admin reviews them.
+-- Success-fee rules (applied to production 2026-10-15)
+-- 1. Success fees are final: refund requests and the 'refunded' status are removed.
+-- 2. Customer "did the job go ahead?" answers only flag unreliable customers.
+--    2+ "no" answers flag the customer and block new job posts until an admin reviews.
+-- 3. Admins can issue a fee credit (fake / spam / duplicate jobs). Credit is used
+--    against future success fees before the card is charged. No cash refunds.
 
--- 1. Fees are non-refundable --------------------------------------------------
 drop table if exists public.refund_requests;
 
 alter table public.success_fees drop constraint if exists success_fees_status_check;
@@ -17,13 +18,12 @@ alter table public.success_fees
   add column if not exists credit_applied_pence integer not null default 0
     check (credit_applied_pence >= 0);
 
--- 2. Fee credit balance + ledger -----------------------------------------------
 alter table public.businesses
   add column if not exists fee_credit_pence integer not null default 0
     check (fee_credit_pence >= 0);
 
--- Businesses can update parts of their own row, so block direct edits to the
--- credit balance. Only the security-definer functions below may change it.
+-- Businesses can update their own row, so the credit balance may only change
+-- inside the security-definer functions below.
 create or replace function public.guard_fee_credit()
 returns trigger language plpgsql set search_path = public as $$
 begin
@@ -62,7 +62,6 @@ drop policy if exists fee_credit_ledger_select on public.fee_credit_ledger;
 create policy fee_credit_ledger_select on public.fee_credit_ledger
   for select to authenticated using (business_id = auth.uid() or public.is_admin());
 
--- Admin only: credit a paid success fee back to the business as account credit.
 create or replace function public.issue_fee_credit(p_fee_id uuid, p_reason text)
 returns integer
 language plpgsql security definer set search_path = public as $$
@@ -99,8 +98,8 @@ begin
 end;
 $$;
 
--- Server only (fee charging code): spends available credit on a pending fee
--- and returns the pence still to charge to the card.
+-- Called by the fee-charging code (service role) before charging the card.
+-- Returns the amount still to charge in pence.
 create or replace function public.apply_fee_credit(p_fee_id uuid)
 returns integer
 language plpgsql security definer set search_path = public as $$
@@ -139,7 +138,6 @@ grant execute on function public.issue_fee_credit(uuid, text) to authenticated;
 revoke all on function public.apply_fee_credit(uuid) from public, anon, authenticated;
 grant execute on function public.apply_fee_credit(uuid) to service_role;
 
--- 3. Unreliable customer flagging ----------------------------------------------
 create or replace function public.normalize_uk_phone(p text)
 returns text language sql immutable as $$
   select nullif(regexp_replace(regexp_replace(coalesce(p, ''), '\D', '', 'g'), '^44', '0'), '');
@@ -166,8 +164,7 @@ alter table public.jobs
   add column if not exists customer_went_ahead boolean,
   add column if not exists customer_confirmed_at timestamptz;
 
--- Customer answers "did the job go ahead?" via the private link (access token).
--- The answer never changes the success fee; a "no" only counts towards a flag.
+-- Post-job confirmation. A "no" never refunds the fee; it only counts toward a flag.
 create or replace function public.confirm_job_outcome(p_job_id uuid, p_token uuid, p_went_ahead boolean)
 returns text
 language plpgsql security definer set search_path = public as $$
@@ -217,8 +214,6 @@ $$;
 revoke all on function public.confirm_job_outcome(uuid, uuid, boolean) from public;
 grant execute on function public.confirm_job_outcome(uuid, uuid, boolean) to anon, authenticated;
 
--- Admin clears a flag after review. The count resets, so two more "no"
--- answers will flag the customer again.
 create or replace function public.review_customer_flag(p_phone text, p_note text)
 returns void
 language plpgsql security definer set search_path = public as $$
@@ -233,7 +228,6 @@ $$;
 revoke all on function public.review_customer_flag(text, text) from public, anon;
 grant execute on function public.review_customer_flag(text, text) to authenticated;
 
--- Block flagged customers from posting new jobs until reviewed.
 create or replace function public.jobs_before_insert()
 returns trigger
 language plpgsql security definer set search_path = public as $$
