@@ -1,4 +1,4 @@
-// Stripe webhook: the ONLY place that grants credits or flips subscription
+// Stripe webhook: the ONLY place that grants credits or changes membership
 // state. Verifies the Stripe signature, then acts on verified events using the
 // service-role key. Credit grants are idempotent via a unique index on
 // credit_transactions.stripe_session_id, so a replayed event can't double-credit.
@@ -13,7 +13,6 @@ const supabase = createClient(
 const webhookSecret = Deno.env.get("STRIPE_WEBHOOK_SECRET")!;
 
 async function grantCredits(businessId: string, credits: number, sessionId: string) {
-  // Idempotent insert — the unique index on stripe_session_id rejects replays
   const { error: insErr } = await supabase.from("credit_transactions").insert({
     business_id: businessId,
     amount: credits,
@@ -27,29 +26,56 @@ async function grantCredits(businessId: string, credits: number, sessionId: stri
     }
     throw insErr;
   }
-  // Ledger row is unique to this session, so it's safe to bump the balance now
   const { data: biz, error: selErr } = await supabase.from("businesses").select("credits").eq("id", businessId).single();
   if (selErr) throw selErr;
   const { error: updErr } = await supabase.from("businesses")
     .update({ credits: (biz?.credits ?? 0) + credits }).eq("id", businessId);
   if (updErr) throw updErr;
-  console.log(`Granted ${credits} credits to ${businessId} for ${sessionId}`);
 }
 
-// Newer Stripe API versions (e.g. dahlia) move current_period_end onto the items
-function periodEndOf(sub: Stripe.Subscription | null): number | null {
-  if (!sub) return null;
+// Newer Stripe API versions move current_period_end onto the items
+function periodEndOf(sub: Stripe.Subscription): number | null {
   const s = sub as unknown as { current_period_end?: number; items?: { data?: { current_period_end?: number }[] } };
   return s.current_period_end ?? s.items?.data?.[0]?.current_period_end ?? null;
 }
 
-async function setSubscription(businessId: string, status: string, periodEnd: number | null, customerId?: string) {
-  const patch: Record<string, unknown> = { subscription_status: status };
+const idOf = (v: string | { id: string } | null | undefined) => (typeof v === "string" ? v : v?.id ?? null);
+
+async function businessIdFor(sub: Stripe.Subscription): Promise<string | null> {
+  if (sub.metadata?.business_id) return sub.metadata.business_id;
+  const { data } = await supabase.from("businesses").select("id")
+    .eq("stripe_customer_id", idOf(sub.customer)).maybeSingle();
+  return data?.id ?? null;
+}
+
+// Makes the membership card the customer's default so success fees can be
+// charged to it off-session later.
+async function rememberPaymentMethod(businessId: string, customerId: string, paymentMethodId: string | null) {
+  if (!paymentMethodId) return;
+  await stripe.customers.update(customerId, { invoice_settings: { default_payment_method: paymentMethodId } });
+  const { error } = await supabase.from("businesses")
+    .update({ default_payment_method_id: paymentMethodId }).eq("id", businessId);
+  if (error) throw error;
+}
+
+async function syncSubscription(sub: Stripe.Subscription, deleted = false) {
+  const businessId = await businessIdFor(sub);
+  if (!businessId) { console.warn("No business for subscription", sub.id); return; }
+  const customerId = idOf(sub.customer)!;
+  const periodEnd = periodEndOf(sub);
+
+  const patch: Record<string, unknown> = {
+    subscription_status: deleted || sub.status === "canceled" ? "cancelled" : sub.status,
+    stripe_subscription_id: sub.id,
+    stripe_customer_id: customerId,
+  };
   if (periodEnd) patch.subscription_current_period_end = new Date(periodEnd * 1000).toISOString();
-  if (customerId) patch.stripe_customer_id = customerId;
+  if (sub.trial_end) patch.trial_ends_at = new Date(sub.trial_end * 1000).toISOString();
+
   const { error } = await supabase.from("businesses").update(patch).eq("id", businessId);
   if (error) throw error;
-  console.log(`Subscription for ${businessId} -> ${status}`);
+
+  if (!deleted) await rememberPaymentMethod(businessId, customerId, idOf(sub.default_payment_method));
 }
 
 Deno.serve(async (req) => {
@@ -75,29 +101,26 @@ Deno.serve(async (req) => {
         if (s.mode === "payment" && s.payment_status === "paid") {
           const credits = parseInt(s.metadata?.credits ?? "0", 10);
           if (credits > 0) await grantCredits(businessId, credits, s.id);
-          if (s.customer) {
-            await supabase.from("businesses").update({ stripe_customer_id: s.customer as string }).eq("id", businessId);
-          }
-        } else if (s.mode === "subscription") {
-          const sub = s.subscription
-            ? await stripe.subscriptions.retrieve(s.subscription as string)
-            : null;
-          await setSubscription(
-            businessId,
-            sub?.status ?? "active",
-            periodEndOf(sub),
-            s.customer as string | undefined,
-          );
+        } else if (s.mode === "subscription" && s.subscription) {
+          const sub = await stripe.subscriptions.retrieve(idOf(s.subscription)!);
+          if (!sub.metadata?.business_id) sub.metadata = { ...sub.metadata, business_id: businessId };
+          await syncSubscription(sub);
         }
         break;
       }
+      case "customer.subscription.created":
       case "customer.subscription.updated":
-      case "customer.subscription.deleted": {
-        const sub = event.data.object as Stripe.Subscription;
-        const businessId = sub.metadata?.business_id;
-        if (businessId) {
-          const status = event.type === "customer.subscription.deleted" ? "cancelled" : sub.status;
-          await setSubscription(businessId, status, periodEndOf(sub), sub.customer as string);
+        await syncSubscription(event.data.object as Stripe.Subscription);
+        break;
+      case "customer.subscription.deleted":
+        await syncSubscription(event.data.object as Stripe.Subscription, true);
+        break;
+      case "customer.updated": {
+        // Fires when a card is changed in the billing portal
+        const c = event.data.object as Stripe.Customer;
+        const pm = idOf(c.invoice_settings?.default_payment_method as string | null);
+        if (pm) {
+          await supabase.from("businesses").update({ default_payment_method_id: pm }).eq("stripe_customer_id", c.id);
         }
         break;
       }
