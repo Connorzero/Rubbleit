@@ -11,6 +11,36 @@ const PACKS: Record<string, { name: string; amountPence: number; credits: number
   rubble: { name: "Rubble — 15 lead credits", amountPence: 7900, credits: 15 },
 };
 
+// The stored price ID only exists in one Stripe account. If the function's key
+// points at a different account, find (or create) the price there by lookup key.
+async function ensureMembershipPrice(stripe: Stripe, storedId: string | null): Promise<string> {
+  if (storedId) {
+    try {
+      const p = await stripe.prices.retrieve(storedId);
+      if (p.active) return p.id;
+    } catch { /* not in this account */ }
+  }
+  const found = await stripe.prices.list({ lookup_keys: [MEMBERSHIP_LOOKUP_KEY], active: true, limit: 1 });
+  if (found.data[0]) return found.data[0].id;
+
+  const product = await stripe.products.create(
+    { name: "Rubble membership", description: "Unlimited quote spots on local jobs" },
+    { idempotencyKey: "rubble-membership-product-v1" },
+  );
+  const price = await stripe.prices.create(
+    {
+      product: product.id,
+      currency: "gbp",
+      unit_amount: 2900,
+      recurring: { interval: "month" },
+      lookup_key: MEMBERSHIP_LOOKUP_KEY,
+      transfer_lookup_key: true,
+    },
+    { idempotencyKey: "rubble-membership-price-v1" },
+  );
+  return price.id;
+}
+
 const cors = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
@@ -59,12 +89,7 @@ Deno.serve(async (req) => {
 
       const { data: settings } = await supabase.from("platform_settings")
         .select("membership_price_id, trial_days").single();
-      let priceId = settings?.membership_price_id as string | null;
-      if (!priceId) {
-        const prices = await stripe.prices.list({ lookup_keys: [MEMBERSHIP_LOOKUP_KEY], active: true, limit: 1 });
-        priceId = prices.data[0]?.id ?? null;
-      }
-      if (!priceId) return json({ error: "membership_not_configured" }, 500);
+      const priceId = await ensureMembershipPrice(stripe, settings?.membership_price_id ?? null);
 
       // Only one free trial per business, even if they cancel and rejoin.
       const trialDays = biz.trial_ends_at ? 0 : (settings?.trial_days ?? 30);
