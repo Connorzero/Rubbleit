@@ -29,8 +29,25 @@ Deno.serve(async (req) => {
       .select("stripe_customer_id").eq("id", user.id).maybeSingle();
     if (!biz?.stripe_customer_id) return json({ error: "no_billing_account" }, 404);
 
+    // A portal session fails if the Stripe account has no saved portal configuration.
+    const configs = await stripe.billingPortal.configurations.list({ is_default: true, limit: 1 });
+    let configuration = configs.data[0]?.id;
+    if (!configuration) {
+      const created = await stripe.billingPortal.configurations.create({
+        business_profile: { headline: "Manage your Rubble membership" },
+        features: {
+          payment_method_update: { enabled: true },
+          invoice_history: { enabled: true },
+          customer_update: { enabled: true, allowed_updates: ["email", "address"] },
+          subscription_cancel: { enabled: true, mode: "at_period_end" },
+        },
+      });
+      configuration = created.id;
+    }
+
     const session = await stripe.billingPortal.sessions.create({
       customer: biz.stripe_customer_id,
+      configuration,
       return_url: `${base}/rubble-dashboard.html?portal=return`,
     });
     return json({ url: session.url });
