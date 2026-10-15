@@ -265,34 +265,24 @@
   .publish-status.draft { background: #FEF9C3; color: #854D0E; }
   .publish-status.live { background: var(--sage-light); color: var(--green); }
 
-  /* Credits / pricing */
-  .pricing-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 24px; }
-  .pricing-card {
-    background: var(--white); border: 1.5px solid var(--border);
-    border-radius: 12px; padding: 24px; text-align: center; position: relative;
+  /* Membership plan */
+  .plan-wrap { display: flex; justify-content: center; margin-bottom: 28px; }
+  .plan-card {
+    width: 100%; max-width: 460px; background: var(--green-dark);
+    border-radius: 16px; padding: 32px; display: flex; flex-direction: column; gap: 20px;
   }
-  .pricing-card.popular { border-color: var(--green); }
-  .popular-badge {
-    position: absolute; top: -10px; left: 50%; transform: translateX(-50%);
-    background: var(--green); color: var(--white); font-size: 10px;
-    font-weight: 700; padding: 3px 12px; border-radius: 10px; white-space: nowrap;
+  .plan-card h3 { font-size: 20px; font-weight: 800; color: var(--lime); }
+  .plan-price { font-size: 40px; font-weight: 800; color: var(--white); line-height: 1.1; }
+  .plan-price span { font-size: 15px; font-weight: 400; color: rgba(255,255,255,0.6); }
+  .plan-subhead { font-size: 15px; font-weight: 600; color: var(--lime); margin-top: 6px; }
+  .plan-perks { list-style: none; display: flex; flex-direction: column; gap: 10px; }
+  .plan-perks li { font-size: 14px; line-height: 1.5; color: rgba(255,255,255,0.85); display: flex; align-items: baseline; gap: 10px; }
+  .plan-perks li::before { content: ''; width: 6px; height: 6px; background: var(--lime); border-radius: 50%; flex-shrink: 0; transform: translateY(-2px); }
+  .plan-smallprint { font-size: 12px; line-height: 1.5; color: rgba(255,255,255,0.5); text-align: center; }
+  .legacy-credit-note {
+    background: var(--sage-light); border: 1px solid var(--border); border-radius: 12px;
+    padding: 16px 20px; font-size: 14px; line-height: 1.5; color: var(--charcoal); margin-bottom: 28px;
   }
-  .pricing-card h3 { font-size: 18px; font-weight: 800; margin-bottom: 4px; color: var(--green-dark); }
-  .pricing-card .price { font-size: 36px; font-weight: 800; color: var(--charcoal); margin: 12px 0 4px; }
-  .pricing-card .price span { font-size: 16px; font-weight: 400; color: var(--mid); }
-  .pricing-card .credits-info { font-size: 14px; color: var(--mid); margin-bottom: 16px; }
-  .pricing-card .per-lead { font-size: 12px; color: var(--mid); margin-top: 8px; }
-
-  /* Featured upsell */
-  .featured-upsell {
-    background: var(--green-dark); border-radius: 12px; padding: 28px;
-    display: grid; grid-template-columns: 1fr auto; gap: 20px; align-items: center;
-  }
-  .featured-upsell h3 { font-family: 'Inter', sans-serif; font-size: 20px; font-weight: 700; color: var(--white); margin-bottom: 6px; }
-  .featured-upsell p { color: rgba(255,255,255,0.65); font-size: 14px; }
-  .featured-perks { display: flex; gap: 16px; margin-top: 14px; flex-wrap: wrap; }
-  .featured-perk { font-size: 13px; color: rgba(255,255,255,0.8); display: flex; align-items: center; gap: 6px; }
-  .featured-perk::before { content: ''; width: 6px; height: 6px; background: var(--lime); border-radius: 50%; flex-shrink: 0; }
 
   /* Onboarding stepper */
   .onboarding-wrap { max-width: 680px; margin: 0 auto; padding: 48px 24px; }
@@ -333,7 +323,7 @@
     .main { margin-left: 0; }
     .stats-row { grid-template-columns: 1fr 1fr; }
     .listing-editor { grid-template-columns: 1fr; }
-    .pricing-grid { grid-template-columns: 1fr; }
+    .plan-card { padding: 24px; }
   }
 </style>
 </head>
@@ -349,9 +339,9 @@
       <h1>Grow your business<br>with <em>Rubble.</em></h1>
       <p>Connect with customers actively looking for waste removal services in your area.</p>
       <ul class="auth-perks">
-        <li>3 free leads when you sign up — no card needed</li>
-        <li>Unlock customer contact details with credits</li>
-        <li>Featured listing puts you top of local searches</li>
+        <li>Free for 30 days, then £29/month (ex VAT)</li>
+        <li>Max 3 quotes per job, so you're never one of 20</li>
+        <li>Only pay 12% when you win a job (min £5, max £60)</li>
         <li>Manage your listing, photos, and reviews</li>
       </ul>
     </div>
@@ -383,7 +373,7 @@
           <div class="field"><label>Password</label><input type="password" id="signupPassword" placeholder="Min. 8 characters"></div>
           <div class="field"><label>Phone</label><input type="tel" id="signupPhone" placeholder="07700 000 000"></div>
           <button class="btn-primary" onclick="handleSignup()">Create free account →</button>
-          <p style="font-size:12px;color:var(--mid);text-align:center;margin-top:12px;">You get 3 free lead credits on sign up. No card required.</p>
+          <p style="font-size:12px;color:var(--mid);text-align:center;margin-top:12px;">Creating an account is free. Start your 30-day free trial when you're ready to quote.</p>
         </div>
       </div>
     </div>
@@ -465,12 +455,12 @@
     <div id="obStep4" class="onboarding-card" style="display:none;text-align:center;">
       <div style="font-size:56px;margin-bottom:16px;">🎉</div>
       <h2>You're ready to go live!</h2>
-      <p style="margin-bottom:28px;">Your listing is set up. You have <strong style="color:var(--green);">3 free credits</strong> to unlock your first leads.</p>
+      <p style="margin-bottom:28px;">Your listing is set up. Start your <strong style="color:var(--green);">30-day free trial</strong> from Billing to quote on local jobs.</p>
       <div style="background:var(--sage-light);border-radius:10px;padding:20px;margin-bottom:24px;text-align:left;">
-        <div style="font-size:13px;font-weight:700;color:var(--green);margin-bottom:8px;">How credits work</div>
+        <div style="font-size:13px;font-weight:700;color:var(--green);margin-bottom:8px;">How quoting works</div>
         <div style="font-size:14px;color:var(--charcoal);line-height:1.7;">
-          When a customer posts a job near you, you'll see the job type, location, and size — but their contact details are hidden.<br><br>
-          Spend <strong>1 credit</strong> to unlock their name, phone, and email. Then contact them directly and win the job.
+          When a customer posts a job near you, you'll see the job type, location and size. Up to 3 businesses can quote on each job.<br><br>
+          If the customer picks your quote, their details are revealed and you pay a 12% success fee (min £5, max £60). Quotes you lose cost nothing.
         </div>
       </div>
       <button class="btn-lime" onclick="finishOnboarding()" style="font-size:16px;padding:16px;">Go to my dashboard →</button>
@@ -488,16 +478,16 @@
       <a class="nav-item active" onclick="showPanel('overview')"><span class="nav-icon">📊</span> Overview</a>
       <a class="nav-item" onclick="showPanel('leads')"><span class="nav-icon">📋</span> Lead inbox <span id="newLeadsBadge" style="margin-left:auto;background:var(--lime);color:var(--green-dark);font-size:10px;font-weight:700;padding:2px 7px;border-radius:10px;display:none;"></span></a>
       <a class="nav-item" onclick="showPanel('listing')"><span class="nav-icon">🏢</span> My listing</a>
-      <a class="nav-item" onclick="showPanel('credits')"><span class="nav-icon">💳</span> Credits & billing</a>
+      <a class="nav-item" onclick="showPanel('credits')"><span class="nav-icon">💳</span> Billing</a>
       <a class="nav-item" onclick="showPanel('reviews')"><span class="nav-icon">⭐</span> Reviews</a>
     </nav>
     <div class="sidebar-footer">
       <div class="credits-pill">
-        <div class="label">Available credits</div>
-        <div class="count" id="sidebarCredits">3</div>
-        <div class="sublabel">leads remaining</div>
+        <div class="label">Membership</div>
+        <div class="count" id="sidebarMembership" style="font-size:18px;">Not started</div>
+        <div class="sublabel" id="sidebarMembershipSub">30 days free</div>
       </div>
-      <button class="btn-buy-credits" onclick="showPanel('credits')">Top up credits →</button>
+      <button class="btn-buy-credits" onclick="showPanel('credits')">View membership →</button>
       <div style="margin-top:12px;">
         <a style="font-size:12px;color:rgba(255,255,255,0.4);cursor:pointer;" onclick="handleLogout()">Sign out</a>
       </div>
@@ -519,9 +509,9 @@
       <div class="panel active" id="panel-overview">
         <div class="stats-row">
           <div class="stat-card highlight">
-            <div class="stat-label">Credits remaining</div>
-            <div class="stat-value" id="statCredits">3</div>
-            <div class="stat-sub">Free trial credits</div>
+            <div class="stat-label">Membership</div>
+            <div class="stat-value" id="statMembership" style="font-size:22px;">Not started</div>
+            <div class="stat-sub" id="statMembershipSub">30 days free</div>
           </div>
           <div class="stat-card">
             <div class="stat-label">New leads this week</div>
@@ -566,8 +556,8 @@
               <div style="font-size:13px;color:var(--mid);display:flex;flex-direction:column;gap:10px;">
                 <div style="display:flex;align-items:center;gap:10px;"><span id="check1" style="color:var(--green);">✓</span> Create your account</div>
                 <div style="display:flex;align-items:center;gap:10px;"><span id="check2" style="color:var(--border);">✓</span> Complete your listing</div>
-                <div style="display:flex;align-items:center;gap:10px;"><span id="check3" style="color:var(--border);">✓</span> Unlock your first lead</div>
-                <div style="display:flex;align-items:center;gap:10px;"><span id="check4" style="color:var(--border);">✓</span> Upgrade to Featured</div>
+                <div style="display:flex;align-items:center;gap:10px;"><span id="check4" style="color:var(--border);">✓</span> Start your free trial</div>
+                <div style="display:flex;align-items:center;gap:10px;"><span id="check3" style="color:var(--border);">✓</span> Win your first job</div>
               </div>
             </div>
           </div>
@@ -578,11 +568,11 @@
       <div class="panel" id="panel-leads">
         <div style="background:var(--green-dark);border-radius:12px;padding:20px 24px;margin-bottom:24px;display:flex;align-items:center;justify-content:space-between;">
           <div>
-            <div style="color:rgba(255,255,255,0.6);font-size:12px;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:4px;">Your credits</div>
-            <div style="color:var(--lime);font-size:28px;font-weight:800;" id="leadsCreditsCount">3</div>
-            <div style="color:rgba(255,255,255,0.5);font-size:12px;">Each unlock costs 1 credit</div>
+            <div style="color:rgba(255,255,255,0.6);font-size:12px;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:4px;">How it works</div>
+            <div style="color:var(--lime);font-size:20px;font-weight:800;">Max 3 quotes per job</div>
+            <div style="color:rgba(255,255,255,0.6);font-size:13px;line-height:1.5;">Only pay 12% when you win. No charge for quotes you lose.</div>
           </div>
-          <button class="btn-lime" style="width:auto;padding:12px 24px;" onclick="showPanel('credits')">Buy more credits</button>
+          <button class="btn-lime membership-cta" style="width:auto;padding:12px 24px;" onclick="showPanel('credits')">Start free trial</button>
         </div>
         <div class="leads-list" id="leadsList">
           <!-- Populated by JS -->
@@ -676,63 +666,26 @@
           </div>
         </div>
 
-        <div style="margin-bottom:28px;">
-          <div style="font-size:14px;color:var(--mid);margin-bottom:4px;">Current balance</div>
-          <div style="font-size:42px;font-weight:800;color:var(--green);" id="creditsBalance">3 <span style="font-size:18px;font-weight:400;color:var(--mid);">credits</span></div>
+        <div class="legacy-credit-note" id="legacyCreditNote" style="display:none;" role="status">
+          You have <strong id="legacyCreditAmount">£0.00</strong> of credit from your old pack. We'll use this against your success fees before charging your card.
         </div>
 
-        <div class="pricing-grid">
-          <div class="pricing-card">
-            <h3>Gravel</h3>
-            <div class="price">£29<span>/one-time</span></div>
-            <div class="credits-info">5 lead credits</div>
-            <button type="button" onclick="startCheckout('gravel', this)" class="btn-outline" style="display:block;width:100%;text-align:center;padding:11px;">Buy Gravel pack</button>
-            <div class="per-lead">£5.80 per lead</div>
-          </div>
-          <div class="pricing-card popular">
-            <div class="popular-badge">Most popular</div>
-            <h3>Rubble</h3>
-            <div class="price">£79<span>/one-time</span></div>
-            <div class="credits-info">15 lead credits</div>
-            <button type="button" onclick="startCheckout('rubble', this)" class="btn-primary" style="display:block;width:100%;text-align:center;padding:11px;">Buy Rubble pack</button>
-            <div class="per-lead">£5.27 per lead</div>
-          </div>
-          <div class="pricing-card" style="background:var(--green-dark);border-color:var(--green-dark);">
-            <h3 style="color:var(--lime);">Membership</h3>
-            <div class="price" style="color:var(--white);">£29<span style="color:rgba(255,255,255,0.5);">/month</span></div>
-            <div class="credits-info" style="color:rgba(255,255,255,0.6);">Unlimited leads + Featured listing</div>
-            <button type="button" onclick="startCheckout('membership', this)" class="btn-lime membership-cta" style="display:block;width:100%;text-align:center;padding:11px;">Start 30-day free trial</button>
-            <div class="per-lead" style="color:rgba(255,255,255,0.4);">Card required, no charge for 30 days</div>
-          </div>
-        </div>
-
-        <div class="featured-upsell">
-          <div>
-            <h3>⭐ Go Featured — get more visibility</h3>
-            <p>Featured listings appear at the top of all local search results on Rubble, plus you get unlimited lead unlocks included in the Boulder plan.</p>
-            <div class="featured-perks">
-              <div class="featured-perk">Top of search results</div>
-              <div class="featured-perk">Featured badge on your listing</div>
-              <div class="featured-perk">Unlimited lead unlocks</div>
-              <div class="featured-perk">Priority support</div>
+        <div class="plan-wrap" id="planWrap">
+          <div class="plan-card">
+            <div>
+              <h3>Rubble Membership</h3>
+              <div class="plan-price" style="margin-top:12px;">£29<span>/month (ex VAT)</span></div>
+              <div class="plan-subhead">Free for 30 days</div>
             </div>
-          </div>
-          <button type="button" onclick="startCheckout('membership', this)" class="btn-lime membership-cta" style="width:auto;padding:14px 28px;white-space:nowrap;">Start free trial →</button>
-        </div>
-
-        <div style="margin-top:28px;">
-          <div class="section-header"><h2>Credit history</h2></div>
-          <div class="editor-card" style="padding:0;overflow:hidden;">
-            <table style="width:100%;border-collapse:collapse;font-size:14px;">
-              <thead><tr style="background:var(--cream);">
-                <th style="padding:12px 16px;text-align:left;font-size:12px;color:var(--mid);font-weight:600;text-transform:uppercase;letter-spacing:0.6px;">Date</th>
-                <th style="padding:12px 16px;text-align:left;font-size:12px;color:var(--mid);font-weight:600;text-transform:uppercase;letter-spacing:0.6px;">Description</th>
-                <th style="padding:12px 16px;text-align:right;font-size:12px;color:var(--mid);font-weight:600;text-transform:uppercase;letter-spacing:0.6px;">Credits</th>
-              </tr></thead>
-              <tbody id="creditHistory">
-                <tr><td colspan="3" style="padding:24px;text-align:center;color:var(--mid);">No transactions yet</td></tr>
-              </tbody>
-            </table>
+            <ul class="plan-perks">
+              <li>Only pay 12% when you win a job (min £5, max £60)</li>
+              <li>Max 3 quotes per job, so you're never one of 20</li>
+              <li>Customer details revealed when you win</li>
+              <li>No charge for quotes you lose</li>
+              <li>Cancel anytime</li>
+            </ul>
+            <button type="button" onclick="startCheckout('membership', this)" class="btn-lime membership-cta" style="display:block;width:100%;text-align:center;padding:14px;font-size:15px;">Start 30-day free trial</button>
+            <p class="plan-smallprint">Card required. No membership charge for 30 days. Success fees apply to jobs won during the trial.</p>
           </div>
         </div>
       </div>
@@ -746,24 +699,6 @@
         </div>
       </div>
 
-    </div>
-  </div>
-</div>
-
-<!-- Credits modal -->
-<div class="modal-overlay" id="creditsModal">
-  <div class="modal">
-    <div class="modal-header">
-      <h3>You need more credits</h3>
-      <button class="modal-close" onclick="document.getElementById('creditsModal').classList.remove('open')">✕</button>
-    </div>
-    <div class="modal-body">
-      <p style="color:var(--mid);margin-bottom:20px;font-size:14px;">You've used your free trial credits. Top up to keep unlocking leads.</p>
-      <div style="display:flex;flex-direction:column;gap:10px;">
-        <button type="button" onclick="startCheckout('gravel', this)" class="btn-outline" style="text-align:center;">Gravel — 5 leads for £29</button>
-        <button type="button" onclick="startCheckout('rubble', this)" class="btn-primary" style="text-align:center;">Rubble — 15 leads for £79</button>
-        <button type="button" onclick="startCheckout('membership', this)" class="btn-lime membership-cta" style="text-align:center;">Membership — 30 days free, then £29/mo</button>
-      </div>
     </div>
   </div>
 </div>
@@ -942,7 +877,6 @@ async function loadBusinessData() {
   currentListing = listing;
 
   if (biz) {
-    updateCreditsUI(biz.credits);
     renderMembership(biz);
     document.getElementById('userAvatar').textContent = getInitials(biz.business_name);
     document.getElementById('previewInitials').textContent = getInitials(biz.business_name);
@@ -973,7 +907,7 @@ async function loadBusinessData() {
   }
 
   await loadLeads();
-  await loadCreditHistory();
+  await loadLegacyCredit();
 }
 
 async function loadLeads() {
@@ -1016,7 +950,7 @@ function renderLeadCard(job, isUnlocked) {
   return `
     <div class="lead-card ${isUnlocked ? '' : 'locked'}" id="lead-${job.id}">
       <div>
-        <div class="lead-type">${job.waste_type || 'General waste'} ${isPremium ? '· 2 credits' : '· 1 credit'}</div>
+        <div class="lead-type">${job.waste_type || 'General waste'}</div>
         <div class="lead-title">${job.waste_type || 'Waste removal'} — ${job.town || job.postcode || 'Nearby'}</div>
         <div class="lead-meta">
           <span>📍 ${job.postcode || 'Location withheld'}</span>
@@ -1045,47 +979,35 @@ function renderLeadCard(job, isUnlocked) {
       </div>
       <div>
         ${isUnlocked
-          ? '<button class="unlock-btn unlocked">✓ Unlocked</button>'
-          : `<button class="unlock-btn" onclick="unlockLead('${job.id}', ${isPremium ? 2 : 1})">🔓 Unlock${isPremium ? ' (2)' : ''}</button>`}
+          ? '<button class="unlock-btn unlocked">✓ Won</button>'
+          : '<button class="unlock-btn" disabled title="Quoting on jobs is coming soon">Quoting opens soon</button>'}
       </div>
     </div>`;
 }
 
-async function unlockLead(jobId, creditCost) {
-  if (!currentBusiness) return;
+// Only credits bought in old packs count as money owed back; free sign-up
+// credits are worthless. Unused paid credits are valued at what was paid.
+const LEGACY_PACK_PENCE = { 5: 2900, 15: 7900 };
 
-  // All credit checking, deduction and contact release happens server-side in
-  // the unlock_lead function — the browser can neither cheat the price nor the
-  // balance, and only receives contact details after a successful charge.
-  const { data, error } = await sb.rpc('unlock_lead', { p_job_id: jobId });
-  if (error) { showToast('Something went wrong. Please try again.'); console.error(error); return; }
+async function loadLegacyCredit() {
+  const note = document.getElementById('legacyCreditNote');
+  if (!note) return;
+  note.style.display = 'none';
+  const balance = currentBusiness?.credits || 0;
+  if (balance <= 0) return;
 
-  if (data && data.error === 'insufficient_credits') {
-    document.getElementById('creditsModal').classList.add('open');
-    return;
-  }
+  const { data: purchases } = await sb.from('credit_transactions')
+    .select('amount').eq('business_id', currentUser.id).eq('type', 'purchase');
+  let boughtCredits = 0, paidPence = 0;
+  (purchases || []).forEach(p => {
+    if (p.amount > 0) { boughtCredits += p.amount; paidPence += LEGACY_PACK_PENCE[p.amount] ?? p.amount * 527; }
+  });
+  const unusedPaid = Math.min(balance, boughtCredits);
+  if (unusedPaid <= 0) return;
 
-  const remaining = data ? data.credits_remaining : currentBusiness.credits;
-  currentBusiness.credits = remaining;
-  updateCreditsUI(remaining);
-
-  // Re-fetch and re-render leads (unlocked contact now comes back via RPC)
-  await loadLeads();
-  document.getElementById('check3').style.color = 'var(--green)';
-  showToast(`Lead unlocked! ${remaining} credits remaining.`);
-}
-
-async function loadCreditHistory() {
-  const { data: txns } = await sb.from('credit_transactions').select('*').eq('business_id', currentUser.id).order('created_at', { ascending: false });
-  if (!txns || txns.length === 0) return;
-
-  const rows = txns.map(t => `
-    <tr style="border-top:1px solid var(--border);">
-      <td style="padding:12px 16px;color:var(--mid);">${new Date(t.created_at).toLocaleDateString('en-GB')}</td>
-      <td style="padding:12px 16px;">${t.type === 'free_trial' ? '🎁 Free trial credits' : t.type === 'purchase' ? '💳 Credit purchase' : '🔓 Lead unlock'}</td>
-      <td style="padding:12px 16px;text-align:right;font-weight:700;color:${t.amount > 0 ? 'var(--green)' : 'var(--red)'};">${t.amount > 0 ? '+' : ''}${t.amount}</td>
-    </tr>`).join('');
-  document.getElementById('creditHistory').innerHTML = rows;
+  const valuePence = Math.round(paidPence * unusedPaid / boughtCredits);
+  document.getElementById('legacyCreditAmount').textContent = '£' + (valuePence / 100).toFixed(2);
+  note.style.display = '';
 }
 
 // ── LISTING SAVE ──
@@ -1161,7 +1083,6 @@ async function doSaveListing(publish) {
     document.getElementById('overviewListingStatus').className = 'publish-status live';
     document.getElementById('overviewListingStatus').textContent = '✓ Live — visible to customers';
     document.getElementById('check2').style.color = 'var(--green)';
-    document.getElementById('check4').style.color = currentBusiness?.is_featured ? 'var(--green)' : 'var(--border)';
   }
   await loadBusinessData();
 }
@@ -1311,17 +1232,9 @@ function showPanel(name) {
   document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   document.getElementById('panel-' + name).classList.add('active');
-  const titles = { overview: 'Overview', leads: 'Lead inbox', listing: 'My listing', credits: 'Credits & billing', reviews: 'Reviews' };
+  const titles = { overview: 'Overview', leads: 'Lead inbox', listing: 'My listing', credits: 'Billing', reviews: 'Reviews' };
   document.getElementById('topbarTitle').textContent = titles[name] || name;
   event?.target?.closest('.nav-item')?.classList.add('active');
-  if (name === 'credits') document.getElementById('creditsBalance').textContent = (currentBusiness?.credits || 0);
-}
-
-function updateCreditsUI(credits) {
-  document.getElementById('sidebarCredits').textContent = credits;
-  document.getElementById('statCredits').textContent = credits;
-  document.getElementById('leadsCreditsCount').textContent = credits;
-  if (currentBusiness) currentBusiness.credits = credits;
 }
 
 function getInitials(name) {
@@ -1401,6 +1314,17 @@ function renderMembership(biz) {
       : '£29/month after a 30-day free trial. Cancel any time.';
   }
 
+  const short = { trialing: ['Free trial', `Ends ${formatDate(biz.trial_ends_at)}`],
+    active: ['Active', '£29/month'], past_due: ['Payment failed', 'Update your card'],
+    unpaid: ['Payment failed', 'Update your card'] }[status]
+    || [hadTrial ? 'Ended' : 'Not started', hadTrial ? 'Rejoin any time' : '30 days free'];
+  ['sidebarMembership', 'statMembership'].forEach(id => { const el = document.getElementById(id); if (el) el.textContent = short[0]; });
+  ['sidebarMembershipSub', 'statMembershipSub'].forEach(id => { const el = document.getElementById(id); if (el) el.textContent = short[1]; });
+  const check4 = document.getElementById('check4');
+  if (check4) check4.style.color = isMember || hadTrial ? 'var(--green)' : 'var(--border)';
+  const planWrap = document.getElementById('planWrap');
+  if (planWrap) planWrap.style.display = isMember ? 'none' : '';
+
   const joinLabel = hadTrial ? 'Rejoin' : 'Start free trial';
   joinBtn.textContent = joinLabel;
   joinBtn.style.display = isMember ? 'none' : '';
@@ -1447,7 +1371,7 @@ async function openBillingPortal(btn) {
   history.replaceState({}, '', window.location.pathname);
   if (status === 'success') {
     showToast('Done. Updating your account…');
-    // The webhook grants credits server-side; poll briefly so the UI catches up
+    // The webhook updates membership server-side; poll briefly so the UI catches up
     let tries = 0;
     const timer = setInterval(async () => {
       tries++;

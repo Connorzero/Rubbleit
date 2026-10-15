@@ -1,15 +1,10 @@
-// Creates a Stripe Checkout Session for the membership (or a legacy credit pack).
+// Creates a Stripe Checkout Session for the Rubble membership. Old credit packs
+// are retired, so any other plan id is rejected.
 // Prices live ONLY on the server, so the client can never change the amount.
 import Stripe from "npm:stripe@17";
 import { createClient } from "npm:@supabase/supabase-js@2";
 
 const MEMBERSHIP_LOOKUP_KEY = "rubble_membership_monthly";
-
-// Legacy credit packs, kept until the switchover step removes credits entirely.
-const PACKS: Record<string, { name: string; amountPence: number; credits: number }> = {
-  gravel: { name: "Gravel — 5 lead credits", amountPence: 2900, credits: 5 },
-  rubble: { name: "Rubble — 15 lead credits", amountPence: 7900, credits: 15 },
-};
 
 // The stored price ID only exists in one Stripe account. If the function's key
 // points at a different account, find (or create) the price there by lookup key.
@@ -24,7 +19,7 @@ async function ensureMembershipPrice(stripe: Stripe, storedId: string | null): P
   if (found.data[0]) return found.data[0].id;
 
   const product = await stripe.products.create(
-    { name: "Rubble membership", description: "Unlimited quote spots on local jobs" },
+    { name: "Rubble membership", description: "Quote on local jobs. 12% success fee only when you win." },
     { idempotencyKey: "rubble-membership-product-v1" },
   );
   const price = await stripe.prices.create(
@@ -82,7 +77,7 @@ Deno.serve(async (req) => {
     const successUrl = `${base}/rubble-dashboard.html?checkout=success`;
     const cancelUrl = `${base}/rubble-dashboard.html?checkout=cancelled`;
 
-    if (packId === "membership" || packId === "boulder") {
+    if (packId === "membership") {
       if (biz.subscription_status === "active" || biz.subscription_status === "trialing" || biz.subscription_status === "past_due") {
         return json({ error: "already_member" }, 409);
       }
@@ -111,22 +106,7 @@ Deno.serve(async (req) => {
       return json({ url: session.url });
     }
 
-    const pack = PACKS[packId];
-    if (!pack) return json({ error: "unknown_pack" }, 400);
-
-    const session = await stripe.checkout.sessions.create({
-      mode: "payment",
-      customer: customerId,
-      client_reference_id: user.id,
-      line_items: [{
-        quantity: 1,
-        price_data: { currency: "gbp", unit_amount: pack.amountPence, product_data: { name: pack.name } },
-      }],
-      metadata: { business_id: user.id, pack_id: packId, credits: String(pack.credits) },
-      success_url: successUrl,
-      cancel_url: cancelUrl,
-    });
-    return json({ url: session.url });
+    return json({ error: "unknown_plan" }, 400);
   } catch (err) {
     console.error("create-checkout error:", err);
     return json({ error: (err as Error).message }, 500);
