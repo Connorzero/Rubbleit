@@ -97,6 +97,26 @@
     font-size: 14px; font-weight: 500; cursor: pointer; transition: all 0.2s;
   }
   .btn-outline:hover { border-color: var(--charcoal); }
+  .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
+  .admin-note { font-size: 13px; color: var(--mid); line-height: 1.5; margin-bottom: 14px; max-width: 680px; }
+  .admin-table-wrap { background: var(--white); border: 1px solid var(--border); border-radius: 12px; overflow-x: auto; }
+  .admin-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .admin-table th { text-align: left; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.6px; color: var(--mid); padding: 12px 16px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  .admin-table td { padding: 12px 16px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+  .admin-table tr:last-child td { border-bottom: none; }
+  .admin-table td:last-child { text-align: right; white-space: nowrap; }
+  .admin-empty { text-align: center !important; color: var(--mid); padding: 28px 16px !important; }
+  .admin-sub { display: block; color: var(--mid); font-size: 12px; margin-top: 2px; }
+  .admin-pill { display: inline-block; font-size: 11px; font-weight: 700; padding: 3px 8px; border-radius: 10px; background: var(--cream); color: var(--charcoal); }
+  .admin-pill.paid { background: rgba(18,95,47,0.1); color: var(--green); }
+  .admin-pill.failed { background: rgba(229,62,62,0.1); color: var(--red); }
+  .admin-btn { padding: 7px 12px; font-size: 13px; }
+  .admin-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  .admin-dialog { border: none; border-radius: 14px; padding: 28px; width: min(440px, calc(100vw - 32px)); color: var(--charcoal); background: var(--white); }
+  .admin-dialog::backdrop { background: rgba(28,28,26,0.5); }
+  .admin-dialog h3 { font-size: 18px; font-weight: 700; margin-bottom: 10px; }
+  .admin-dialog-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 8px; }
+  .admin-dialog-actions .btn-primary { width: auto; }
   .divider { display: flex; align-items: center; gap: 12px; margin: 20px 0; color: var(--mid); font-size: 13px; }
   .divider::before, .divider::after { content: ''; flex: 1; height: 1px; background: var(--border); }
   .error-msg { background: #FEE2E2; color: var(--red); padding: 12px 14px; border-radius: 8px; font-size: 14px; margin-bottom: 16px; display: none; }
@@ -480,6 +500,7 @@
       <a class="nav-item" onclick="showPanel('listing')"><span class="nav-icon">🏢</span> My listing</a>
       <a class="nav-item" onclick="showPanel('credits')"><span class="nav-icon">💳</span> Billing</a>
       <a class="nav-item" onclick="showPanel('reviews')"><span class="nav-icon">⭐</span> Reviews</a>
+      <a class="nav-item" id="adminNavItem" style="display:none;" onclick="showPanel('admin')"><span class="nav-icon">🛡️</span> Admin <span id="adminFlagBadge" style="margin-left:auto;background:var(--red);color:var(--white);font-size:10px;font-weight:700;padding:2px 7px;border-radius:10px;display:none;"></span></a>
     </nav>
     <div class="sidebar-footer">
       <div class="credits-pill">
@@ -699,11 +720,66 @@
         </div>
       </div>
 
+      <!-- ADMIN (only shown when businesses.is_admin = true; every action is re-checked server-side) -->
+      <div class="panel" id="panel-admin">
+        <div class="section-header"><h2>Flagged customers</h2></div>
+        <p class="admin-note">Customers who said 2 or more accepted jobs didn&apos;t go ahead. They can&apos;t post new jobs until you clear them.</p>
+        <div class="admin-table-wrap">
+          <table class="admin-table">
+            <thead><tr><th>Phone</th><th>Email</th><th>&ldquo;No&rdquo; answers</th><th>Flagged</th><th><span class="sr-only">Action</span></th></tr></thead>
+            <tbody id="adminFlagsBody"><tr><td colspan="5" class="admin-empty">Loading…</td></tr></tbody>
+          </table>
+        </div>
+
+        <div class="section-header" style="margin-top:32px;"><h2>Success fees</h2></div>
+        <p class="admin-note">Issue fee credit for fake, spam or duplicate jobs. The fee amount becomes account credit and is used against the business&apos;s next success fees before their card is charged. There are no cash refunds.</p>
+        <div class="admin-table-wrap">
+          <table class="admin-table">
+            <thead><tr><th>Date</th><th>Business</th><th>Job</th><th>Fee</th><th>Status</th><th><span class="sr-only">Action</span></th></tr></thead>
+            <tbody id="adminFeesBody"><tr><td colspan="6" class="admin-empty">Loading…</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
     </div>
   </div>
 </div>
 
 <div class="toast" id="toast"></div>
+
+<dialog class="admin-dialog" id="creditDialog" aria-labelledby="creditDialogTitle">
+  <form method="dialog" onsubmit="submitFeeCredit(event)">
+    <h3 id="creditDialogTitle">Issue fee credit</h3>
+    <p id="creditDialogText" class="admin-note"></p>
+    <div class="field">
+      <label for="creditReason">Reason</label>
+      <select id="creditReason" required>
+        <option value="fake">Fake job</option>
+        <option value="spam">Spam</option>
+        <option value="duplicate">Duplicate job</option>
+      </select>
+    </div>
+    <div class="admin-dialog-actions">
+      <button type="button" class="btn-outline" onclick="document.getElementById('creditDialog').close()">Cancel</button>
+      <button type="submit" class="btn-primary" id="creditSubmitBtn">Issue credit</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog class="admin-dialog" id="flagDialog" aria-labelledby="flagDialogTitle">
+  <form method="dialog" onsubmit="submitClearFlag(event)">
+    <h3 id="flagDialogTitle">Clear flagged customer</h3>
+    <p id="flagDialogText" class="admin-note"></p>
+    <div class="field">
+      <label for="flagNote">Review note</label>
+      <textarea id="flagNote" rows="3" required placeholder="e.g. Spoke to customer, genuine cancellations"></textarea>
+    </div>
+    <div class="admin-dialog-actions">
+      <button type="button" class="btn-outline" onclick="document.getElementById('flagDialog').close()">Cancel</button>
+      <button type="submit" class="btn-primary" id="flagSubmitBtn">Clear and unblock</button>
+    </div>
+  </form>
+</dialog>
 
 <script>
 const SUPABASE_URL = 'https://bfekeamjuiytiiexbflt.supabase.co';
@@ -878,6 +954,7 @@ async function loadBusinessData() {
 
   if (biz) {
     renderMembership(biz);
+    setupAdmin(biz);
     document.getElementById('userAvatar').textContent = getInitials(biz.business_name);
     document.getElementById('previewInitials').textContent = getInitials(biz.business_name);
     document.getElementById('previewName').textContent = biz.business_name || 'Your business';
@@ -1232,9 +1309,148 @@ function showPanel(name) {
   document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   document.getElementById('panel-' + name).classList.add('active');
-  const titles = { overview: 'Overview', leads: 'Lead inbox', listing: 'My listing', credits: 'Billing', reviews: 'Reviews' };
+  const titles = { overview: 'Overview', leads: 'Lead inbox', listing: 'My listing', credits: 'Billing', reviews: 'Reviews', admin: 'Admin' };
   document.getElementById('topbarTitle').textContent = titles[name] || name;
   event?.target?.closest('.nav-item')?.classList.add('active');
+  if (name === 'admin') loadAdmin();
+}
+
+// ── ADMIN ──
+// Visibility here is cosmetic; the database functions reject non-admins.
+const escapeHtml = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const gbp = (pence) => '£' + ((pence || 0) / 100).toFixed(2);
+const shortDate = (d) => d ? new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '—';
+let adminFees = [];
+let adminFlags = [];
+let pendingCreditFeeId = null;
+let pendingFlagPhone = null;
+
+function setupAdmin(biz) {
+  const isAdmin = biz?.is_admin === true;
+  document.getElementById('adminNavItem').style.display = isAdmin ? 'flex' : 'none';
+  if (isAdmin) loadAdminFlagCount();
+}
+
+async function loadAdminFlagCount() {
+  const { count } = await sb.from('customer_flags').select('phone_normalized', { count: 'exact', head: true })
+    .not('flagged_at', 'is', null).is('reviewed_at', null);
+  const badge = document.getElementById('adminFlagBadge');
+  badge.textContent = count || '';
+  badge.style.display = count ? 'inline-block' : 'none';
+}
+
+async function loadAdmin() {
+  await Promise.all([loadAdminFlags(), loadAdminFees()]);
+}
+
+async function loadAdminFlags() {
+  const body = document.getElementById('adminFlagsBody');
+  const { data, error } = await sb.from('customer_flags')
+    .select('phone_normalized, last_email, no_count, flagged_at')
+    .not('flagged_at', 'is', null).is('reviewed_at', null)
+    .order('flagged_at', { ascending: false });
+  if (error) { body.innerHTML = `<tr><td colspan="5" class="admin-empty">Could not load flags: ${escapeHtml(error.message)}</td></tr>`; return; }
+  adminFlags = data || [];
+  if (!adminFlags.length) { body.innerHTML = '<tr><td colspan="5" class="admin-empty">No customers awaiting review.</td></tr>'; return; }
+  body.innerHTML = adminFlags.map((f, i) => `
+    <tr>
+      <td>${escapeHtml(f.phone_normalized)}</td>
+      <td>${escapeHtml(f.last_email || '—')}</td>
+      <td>${f.no_count}</td>
+      <td>${shortDate(f.flagged_at)}</td>
+      <td><button class="btn-outline admin-btn" onclick="openClearFlag(${i})">Clear flag</button></td>
+    </tr>`).join('');
+}
+
+async function loadAdminFees() {
+  const body = document.getElementById('adminFeesBody');
+  const { data, error } = await sb.rpc('admin_list_fees');
+  if (error) { body.innerHTML = `<tr><td colspan="6" class="admin-empty">Could not load fees: ${escapeHtml(error.message)}</td></tr>`; return; }
+  adminFees = data || [];
+  if (!adminFees.length) { body.innerHTML = '<tr><td colspan="6" class="admin-empty">No success fees yet.</td></tr>'; return; }
+  body.innerHTML = adminFees.map((f, i) => {
+    const job = [f.waste_type, f.town || f.postcode_district].filter(Boolean).join(' · ') || '—';
+    const credit = f.credit_applied_pence ? `<span class="admin-sub">${gbp(f.credit_applied_pence)} paid from credit</span>` : '';
+    const reason = f.status === 'failed' && f.failure_reason ? `<span class="admin-sub">${escapeHtml(f.failure_reason)}</span>` : '';
+    const credited = f.credited_at ? `<span class="admin-sub">Credited (${escapeHtml(f.credit_reason)}) ${shortDate(f.credited_at)}</span>` : '';
+    let action = '';
+    if (f.status === 'paid' && !f.credited_at) action = `<button class="btn-outline admin-btn" onclick="openFeeCredit(${i})">Issue fee credit</button>`;
+    else if (f.status === 'failed') action = `<button class="btn-outline admin-btn" onclick="retryFee(${i}, this)">Retry charge</button>`;
+    return `
+      <tr>
+        <td>${shortDate(f.created_at)}</td>
+        <td>${escapeHtml(f.business_name || '—')}<span class="admin-sub">${escapeHtml(f.business_email || '')}</span></td>
+        <td>${escapeHtml(job)}</td>
+        <td>${gbp(f.amount_pence)}${credit}</td>
+        <td><span class="admin-pill ${escapeHtml(f.status)}">${escapeHtml(f.status)}</span>${reason}${credited}</td>
+        <td>${action}</td>
+      </tr>`;
+  }).join('');
+}
+
+function openFeeCredit(i) {
+  const f = adminFees[i];
+  pendingCreditFeeId = f.id;
+  document.getElementById('creditDialogText').textContent =
+    `${gbp(f.amount_pence)} will be added to ${f.business_name || 'this business'}'s account credit and used against their next success fees. This can only be done once per fee.`;
+  document.getElementById('creditDialog').showModal();
+}
+
+async function submitFeeCredit(e) {
+  e.preventDefault();
+  const btn = document.getElementById('creditSubmitBtn');
+  btn.disabled = true;
+  const { data, error } = await sb.rpc('issue_fee_credit', {
+    p_fee_id: pendingCreditFeeId,
+    p_reason: document.getElementById('creditReason').value,
+  });
+  btn.disabled = false;
+  if (error) { showToast('Could not issue credit: ' + error.message); return; }
+  document.getElementById('creditDialog').close();
+  showToast(`Credit issued. Business balance is now ${gbp(data)}.`);
+  loadAdminFees();
+}
+
+function openClearFlag(i) {
+  const f = adminFlags[i];
+  pendingFlagPhone = f.phone_normalized;
+  document.getElementById('flagNote').value = '';
+  document.getElementById('flagDialogText').textContent =
+    `${f.phone_normalized} said ${f.no_count} accepted jobs didn't go ahead. Clearing lets them post jobs again and resets their count.`;
+  document.getElementById('flagDialog').showModal();
+}
+
+async function submitClearFlag(e) {
+  e.preventDefault();
+  const note = document.getElementById('flagNote').value.trim();
+  if (!note) return;
+  const btn = document.getElementById('flagSubmitBtn');
+  btn.disabled = true;
+  const { error } = await sb.rpc('review_customer_flag', { p_phone: pendingFlagPhone, p_note: note });
+  btn.disabled = false;
+  if (error) { showToast('Could not clear flag: ' + error.message); return; }
+  document.getElementById('flagDialog').close();
+  showToast('Customer cleared. They can post jobs again.');
+  loadAdminFlags();
+  loadAdminFlagCount();
+}
+
+async function retryFee(i, btn) {
+  btn.disabled = true;
+  btn.textContent = 'Charging…';
+  try {
+    const { data: { session } } = await sb.auth.getSession();
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/charge-success-fee`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token}`, apikey: SUPABASE_KEY },
+      body: JSON.stringify({ feeId: adminFees[i].id }),
+    });
+    const out = await res.json();
+    showToast(out.status === 'paid' ? 'Fee paid.' : 'Charge failed: ' + (out.reason || out.error || 'unknown'));
+  } catch (err) {
+    showToast('Charge failed: ' + err.message);
+  }
+  loadAdminFees();
 }
 
 function getInitials(name) {
