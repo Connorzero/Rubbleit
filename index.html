@@ -1230,7 +1230,7 @@
         </li>
         <li>
           <div class="perk-icon">£</div>
-          <div><strong>Only pay when you win</strong> — 12% of the job (min £5, max £60). No charge for quotes you lose.</div>
+          <div><strong>Only pay when you win</strong> — 12% of the job (min £5, max £60). No charge for quotes you lose. The success fee is charged when a customer accepts your quote and is non-refundable.</div>
         </li>
         <li>
           <div class="perk-icon">🛡️</div>
@@ -1254,6 +1254,7 @@
             <div style="font-weight:700; margin-bottom:4px;">Rubble Membership</div>
             <div style="font-size:24px;font-weight:800;margin-bottom:8px;">£29<span style="font-size:14px;font-weight:400;opacity:0.6">/mo ex VAT</span></div>
             <div style="font-size:13px;opacity:0.65;">Quote on local jobs. 12% success fee only when you win. Cancel anytime.</div>
+            <div style="font-size:11px;opacity:0.55;margin-top:8px;line-height:1.5;">The success fee is charged when a customer accepts your quote and is non-refundable.</div>
           </div>
         </div>
       </div>
@@ -1304,9 +1305,13 @@
             <option>Multiple services</option>
           </select>
         </div>
+        <label for="suTerms" style="display:flex;gap:10px;align-items:flex-start;font-size:13px;line-height:1.5;color:var(--mid);margin-bottom:14px;cursor:pointer;">
+          <input id="suTerms" type="checkbox" style="margin-top:3px;flex-shrink:0;width:auto;">
+          <span>I agree to the Terms of Service. The success fee is charged when a customer accepts your quote and is non-refundable.</span>
+        </label>
         <div id="suError" style="display:none;background:#FEE2E2;color:#B91C1C;padding:12px 14px;border-radius:8px;font-size:14px;margin-bottom:14px;"></div>
         <button id="suSubmitBtn" class="btn-primary" style="width:100%;padding:14px;font-size:16px;" onclick="submitSignup()">Create free listing →</button>
-        <p style="font-size:12px;color:var(--mid);text-align:center;margin-top:12px;">By continuing you agree to our Terms of Service. No card required for free listing.</p>
+        <p style="font-size:12px;color:var(--mid);text-align:center;margin-top:12px;">No card required for free listing.</p>
       </div>
       <div id="signupSuccess" style="display:none;" class="success-state">
         <div class="success-icon">📧</div>
@@ -1676,6 +1681,12 @@ async function submitSignup() {
   var serviceEl = document.getElementById('suService');
   var service  = serviceEl && serviceEl.value && serviceEl.value.indexOf('Select') !== 0 ? serviceEl.value : '';
 
+  var termsEl = document.getElementById('suTerms');
+  if (termsEl && !termsEl.checked) {
+    showSuError('Please agree to the Terms of Service to continue.');
+    return;
+  }
+  
   if (!bizName || !email || !password) {
     showSignupError('Please fill in your business name, email and password.');
     return;
