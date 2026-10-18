@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#0A2414">
+<meta name="robots" content="noindex">
+<title>Your quotes | Rubble</title>
+<meta name="description" content="Compare quotes from local waste removal businesses and choose the one you want.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&family=Inter:wght@700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --cream: #F7F5F0;
+    --charcoal: #0A2414;
+    --green: #125F2F;
+    --lime: #C1FF72;
+    --mid: #6B6B69;
+    --border: #E2DED7;
+    --white: #FFFFFF;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'DM Sans', sans-serif; background: var(--cream); color: var(--charcoal); line-height: 1.5; min-height: 100vh; }
+  nav { background: var(--charcoal); height: 60px; display: flex; align-items: center; padding: 0 24px; }
+  .logo { font-family: 'Inter', sans-serif; font-size: 22px; font-weight: 800; color: var(--white); letter-spacing: -0.5px; text-decoration: none; }
+  .logo span { color: var(--lime); }
+  main { max-width: 760px; margin: 0 auto; padding: 32px 20px 64px; display: flex; flex-direction: column; gap: 24px; }
+
+  .job-head { display: flex; flex-direction: column; gap: 6px; }
+  .eyebrow { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: var(--green); }
+  h1 { font-family: 'Inter', sans-serif; font-size: clamp(26px, 5vw, 36px); font-weight: 800; letter-spacing: -0.8px; line-height: 1.15; text-wrap: balance; }
+  .job-meta { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; }
+  .chip { font-size: 13px; background: var(--white); border: 1px solid var(--border); border-radius: 999px; padding: 4px 12px; color: var(--charcoal); }
+
+  .notice { background: var(--white); border: 1px solid var(--border); border-radius: 12px; padding: 20px; color: var(--mid); }
+  .notice strong { color: var(--charcoal); }
+
+  .quotes { list-style: none; display: flex; flex-direction: column; gap: 14px; }
+  .quote { background: var(--white); border: 1.5px solid var(--border); border-radius: 14px; padding: 20px; display: flex; flex-direction: column; gap: 14px; }
+  .quote.is-accepted { border-color: var(--green); box-shadow: 0 0 0 3px rgba(18,95,47,0.12); }
+  .quote.is-lost { opacity: 0.55; }
+  .quote-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
+  .biz { display: flex; flex-direction: column; gap: 2px; }
+  .biz-name { font-weight: 700; font-size: 17px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .badge { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.6px; background: #E8F5ED; color: var(--green); border-radius: 4px; padding: 2px 6px; }
+  .biz-town { font-size: 14px; color: var(--mid); }
+  .price { font-family: 'Inter', sans-serif; font-size: 28px; font-weight: 800; letter-spacing: -0.5px; white-space: nowrap; }
+  .quote-body { font-size: 15px; color: var(--charcoal); white-space: pre-line; overflow-wrap: anywhere; }
+  .quote-foot { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; font-size: 14px; color: var(--mid); }
+
+  .btn { font-family: 'DM Sans', sans-serif; font-size: 15px; font-weight: 600; border-radius: 8px; padding: 11px 22px; cursor: pointer; border: none; transition: background 0.15s, opacity 0.15s; }
+  .btn-primary { background: var(--lime); color: var(--charcoal); }
+  .btn-primary:hover { background: #a8e85a; }
+  .btn-ghost { background: transparent; color: var(--charcoal); border: 1.5px solid var(--border); }
+  .btn:disabled { opacity: 0.6; cursor: wait; }
+  .btn:focus-visible { outline: 3px solid var(--green); outline-offset: 2px; }
+
+  .contact { background: #E8F5ED; border-radius: 10px; padding: 16px; display: flex; flex-direction: column; gap: 4px; font-size: 15px; }
+  .contact a { color: var(--green); font-weight: 600; }
+  .contact-title { font-weight: 700; }
+
+  dialog { border: none; border-radius: 16px; padding: 24px; max-width: 420px; width: calc(100% - 32px); color: var(--charcoal); }
+  dialog::backdrop { background: rgba(10,36,20,0.6); }
+  dialog h2 { font-family: 'Inter', sans-serif; font-size: 22px; font-weight: 800; margin-bottom: 8px; }
+  dialog p { color: var(--mid); margin-bottom: 20px; }
+  .dialog-actions { display: flex; gap: 10px; justify-content: flex-end; }
+  .error { color: #B42318; font-size: 14px; margin-bottom: 12px; }
+  .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+</style>
+</head>
+<body>
+<nav><a class="logo" href="/">rub<span>ble</span></a></nav>
+
+<main id="app" aria-live="polite">
+  <p class="notice">Loading your quotes…</p>
+</main>
+
+<dialog id="confirmDialog" aria-labelledby="confirmTitle">
+  <h2 id="confirmTitle">Accept this quote?</h2>
+  <p id="confirmText"></p>
+  <p class="error" id="confirmError" hidden></p>
+  <div class="dialog-actions">
+    <button type="button" class="btn btn-ghost" id="cancelBtn">Cancel</button>
+    <button type="button" class="btn btn-primary" id="confirmBtn">Accept quote</button>
+  </div>
+</dialog>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+const SUPABASE_URL = 'https://bfekeamjuiytiiexbflt.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJmZWtlYW1qdWl5dGlpZXhiZmx0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE2ODYwOTksImV4cCI6MjA5NzI2MjA5OX0.IrDAec0wXuuuWT7_ORGwSHtEAN-qnMz8WMr24rY5OKQ';
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+const params = new URLSearchParams(location.search);
+const jobId = params.get('job');
+const token = params.get('token');
+const app = document.getElementById('app');
+const dialog = document.getElementById('confirmDialog');
+const confirmBtn = document.getElementById('confirmBtn');
+const confirmError = document.getElementById('confirmError');
+let pendingQuote = null;
+
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const money = (p) => '£' + (p / 100).toLocaleString('en-GB', { minimumFractionDigits: p % 100 ? 2 : 0, maximumFractionDigits: 2 });
+const date = (d) => d ? new Date(d).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' }) : null;
+
+function showNotice(html) { app.innerHTML = `<div class="notice">${html}</div>`; }
+
+async function load() {
+  if (!jobId || !token) {
+    showNotice('<strong>This link is incomplete.</strong> Please use the full link from your job confirmation.');
+    return;
+  }
+  const { data, error } = await sb.rpc('customer_job_view', { p_job_id: jobId, p_token: token });
+  if (error) {
+    showNotice('<strong>We couldn&apos;t find that job.</strong> Check you&apos;ve used the full link from your confirmation.');
+    return;
+  }
+  render(data);
+}
+
+function render({ job, quotes }) {
+  const accepted = job.status === 'accepted' || job.status === 'completed';
+  const firstName = (job.customer_name || '').split(' ')[0];
+  const meta = [job.waste_type, job.volume, job.postcode, job.timing].filter(Boolean)
+    .map((m) => `<span class="chip">${esc(m)}</span>`).join('');
+
+  let intro;
+  if (accepted) intro = 'You&apos;ve chosen a business. Their contact details are below — they&apos;ll be in touch to arrange the collection.';
+  else if (job.status === 'cancelled') intro = 'This job has been cancelled.';
+  else if (!quotes.length) intro = '<strong>No quotes yet.</strong> Local businesses are reviewing your job. Check back on this page soon — bookmark it so you can find it again.';
+  else intro = `You have <strong>${quotes.length} quote${quotes.length === 1 ? '' : 's'}</strong>. Pick the one that suits you best — the business will then get your contact details.`;
+
+  const canAccept = !accepted && (job.status === 'open' || job.status === 'full');
+
+  app.innerHTML = `
+    <header class="job-head">
+      <span class="eyebrow">Your job</span>
+      <h1>${firstName ? esc(firstName) + ', here' : 'Here'} are your quotes</h1>
+      <div class="job-meta">${meta}</div>
+    </header>
+    <div class="notice">${intro}</div>
+    <ul class="quotes">${quotes.map((q) => quoteCard(q, canAccept)).join('')}</ul>
+  `;
+
+  app.querySelectorAll('[data-accept]').forEach((btn) => {
+    btn.addEventListener('click', () => openConfirm(quotes.find((q) => q.id === btn.dataset.accept)));
+  });
+}
+
+function quoteCard(q, canAccept) {
+  const isAccepted = q.status === 'accepted';
+  const available = date(q.available_date);
+  const details = [q.description, q.message].filter(Boolean).map(esc).join('\n\n');
+
+  let foot = available ? `<span>Available from ${esc(available)}</span>` : '<span></span>';
+  if (canAccept && q.status === 'submitted') {
+    foot += `<button type="button" class="btn btn-primary" data-accept="${esc(q.id)}">Accept quote<span class="sr-only"> from ${esc(q.business_name)}</span></button>`;
+  } else if (isAccepted) {
+    foot += '<span class="badge">Accepted</span>';
+  } else if (q.status === 'lost') {
+    foot += '<span>Not chosen</span>';
+  }
+
+  const contact = isAccepted ? `
+    <div class="contact">
+      <span class="contact-title">Contact ${esc(q.contact_name || q.business_name)}</span>
+      ${q.phone ? `<a href="tel:${esc(q.phone.replace(/\s+/g, ''))}">${esc(q.phone)}</a>` : ''}
+      ${q.email ? `<a href="mailto:${esc(q.email)}">${esc(q.email)}</a>` : ''}
+    </div>` : '';
+
+  return `
+    <li class="quote ${isAccepted ? 'is-accepted' : ''} ${q.status === 'lost' ? 'is-lost' : ''}">
+      <div class="quote-top">
+        <div class="biz">
+          <span class="biz-name">${esc(q.business_name)}${q.verified ? '<span class="badge">Verified</span>' : ''}</span>
+          ${q.town ? `<span class="biz-town">${esc(q.town)}</span>` : ''}
+        </div>
+        <span class="price">${money(q.price_pence)}</span>
+      </div>
+      ${details ? `<p class="quote-body">${details}</p>` : ''}
+      ${contact}
+      <div class="quote-foot">${foot}</div>
+    </li>`;
+}
+
+function openConfirm(q) {
+  if (!q) return;
+  pendingQuote = q;
+  document.getElementById('confirmText').textContent =
+    `You're choosing ${q.business_name} for ${money(q.price_pence)}. They'll receive your contact details, and the other quotes will be declined.`;
+  confirmError.hidden = true;
+  confirmBtn.disabled = false;
+  confirmBtn.textContent = 'Accept quote';
+  dialog.showModal();
+}
+
+document.getElementById('cancelBtn').addEventListener('click', () => dialog.close());
+
+confirmBtn.addEventListener('click', async () => {
+  if (!pendingQuote) return;
+  confirmBtn.disabled = true;
+  confirmBtn.textContent = 'Accepting…';
+  confirmError.hidden = true;
+  try {
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/accept-quote`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${SUPABASE_ANON_KEY}` },
+      body: JSON.stringify({ jobId, token, quoteId: pendingQuote.id }),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(body.message || 'Something went wrong. Please try again.');
+    dialog.close();
+    if (body.view) render(body.view); else load();
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  } catch (err) {
+    confirmError.textContent = err.message;
+    confirmError.hidden = false;
+    confirmBtn.disabled = false;
+    confirmBtn.textContent = 'Try again';
+  }
+});
+
+load();
+</script>
+</body>
+</html>
