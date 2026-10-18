@@ -1230,7 +1230,7 @@
         </li>
         <li>
           <div class="perk-icon">£</div>
-          <div><strong>Only pay when you win</strong> — 12% of the job (min £5, max £60). No charge for quotes you lose.</div>
+          <div><strong>Only pay when you win</strong> — 12% of the job (min £5, max £60). No charge for quotes you lose. The success fee is charged when a customer accepts your quote and is non-refundable.</div>
         </li>
         <li>
           <div class="perk-icon">🛡️</div>
@@ -1254,6 +1254,7 @@
             <div style="font-weight:700; margin-bottom:4px;">Rubble Membership</div>
             <div style="font-size:24px;font-weight:800;margin-bottom:8px;">£29<span style="font-size:14px;font-weight:400;opacity:0.6">/mo ex VAT</span></div>
             <div style="font-size:13px;opacity:0.65;">Quote on local jobs. 12% success fee only when you win. Cancel anytime.</div>
+            <div style="font-size:11px;opacity:0.55;margin-top:8px;line-height:1.5;">The success fee is charged when a customer accepts your quote and is non-refundable.</div>
           </div>
         </div>
       </div>
@@ -1304,9 +1305,13 @@
             <option>Multiple services</option>
           </select>
         </div>
+        <label for="suTerms" style="display:flex;gap:10px;align-items:flex-start;font-size:13px;line-height:1.5;color:var(--mid);margin-bottom:14px;cursor:pointer;">
+          <input id="suTerms" type="checkbox" style="margin-top:3px;flex-shrink:0;width:auto;">
+          <span>I agree to the Terms of Service. The success fee is charged when a customer accepts your quote and is non-refundable.</span>
+        </label>
         <div id="suError" style="display:none;background:#FEE2E2;color:#B91C1C;padding:12px 14px;border-radius:8px;font-size:14px;margin-bottom:14px;"></div>
         <button id="suSubmitBtn" class="btn-primary" style="width:100%;padding:14px;font-size:16px;" onclick="submitSignup()">Create free listing →</button>
-        <p style="font-size:12px;color:var(--mid);text-align:center;margin-top:12px;">By continuing you agree to our Terms of Service. No card required for free listing.</p>
+        <p style="font-size:12px;color:var(--mid);text-align:center;margin-top:12px;">No card required for free listing.</p>
       </div>
       <div id="signupSuccess" style="display:none;" class="success-state">
         <div class="success-icon">📧</div>
@@ -1500,8 +1505,10 @@
       <div id="postJobSuccess" style="display:none;" class="success-state">
         <div class="success-icon">🎉</div>
         <h3>Job posted!</h3>
-        <p>Your job has been sent to <strong>6 removalists near you</strong>. You'll receive quotes by email within a few hours.</p>
-        <button class="btn-primary" style="margin-top:20px;" onclick="closeModal('postJobModal')">Done</button>
+        <p>Your job has been sent to local removalists. Compare quotes and accept the one you want on your private quotes page:</p>
+        <p style="margin-top:12px;word-break:break-all;"><a id="quotesLink" href="#" style="color:var(--green);font-weight:600;"></a></p>
+        <p style="margin-top:8px;font-size:13px;color:var(--mid);">Bookmark this link. Anyone with it can view and accept your quotes.</p>
+        <button class="btn-primary" style="margin-top:20px;" onclick="window.location.href=document.getElementById('quotesLink').href">View my quotes</button>
       </div>
     </div>
   </div>
@@ -1629,19 +1636,34 @@ async function submitJob() {
     );
     var selects = document.querySelectorAll('#pjStep1 select');
     var inputs = document.querySelectorAll('#pjStep1 input');
-    await window._sbClient.from('jobs').insert({
-      waste_type: selects[0] ? selects[0].value : '',
-      volume: selects[1] ? selects[1].value : '',
-      postcode: inputs[0] ? inputs[0].value : '',
-      timing: selects[2] ? selects[2].value : '',
-      details: document.querySelector('#pjStep2 textarea') ? document.querySelector('#pjStep2 textarea').value : '',
-      budget: document.querySelector('#pjStep2 select') ? document.querySelector('#pjStep2 select').value : '',
-      customer_name: document.querySelector('#pjStep3 input[type=text]') ? document.querySelector('#pjStep3 input[type=text]').value : '',
-      customer_email: document.querySelector('#pjStep3 input[type=email]') ? document.querySelector('#pjStep3 input[type=email]').value : '',
-      customer_phone: document.querySelector('#pjStep3 input[type=tel]') ? document.querySelector('#pjStep3 input[type=tel]').value : '',
-      status: 'open'
+    var val = function (sel) { var el = document.querySelector(sel); return el ? el.value : ''; };
+    var result = await window._sbClient.rpc('post_job', {
+      p_waste_type: selects[0] ? selects[0].value : '',
+      p_volume: selects[1] ? selects[1].value : '',
+      p_postcode: inputs[0] ? inputs[0].value : '',
+      p_timing: selects[2] ? selects[2].value : '',
+      p_details: val('#pjStep2 textarea'),
+      p_budget: val('#pjStep2 select'),
+      p_customer_name: val('#pjStep3 input[type=text]'),
+      p_customer_email: val('#pjStep3 input[type=email]'),
+      p_customer_phone: val('#pjStep3 input[type=tel]')
     });
-  } catch(e) { console.error('Job submit error:', e); }
+    if (result.error) {
+      var msg = result.error.message.indexOf('email_required') > -1 ? 'Please enter a valid email address.'
+        : result.error.message.indexOf('postcode_required') > -1 ? 'Please enter your postcode.'
+        : 'Something went wrong posting your job. Please try again.';
+      showToast(msg);
+      return;
+    }
+    var link = location.origin + '/quotes.html?job=' + result.data.id + '&token=' + result.data.token;
+    var linkEl = document.getElementById('quotesLink');
+    linkEl.href = link;
+    linkEl.textContent = link;
+  } catch(e) {
+    console.error('Job submit error:', e);
+    showToast('Something went wrong posting your job. Please try again.');
+    return;
+  }
   document.getElementById('postJobForm').style.display = 'none';
   document.getElementById('postJobSuccess').style.display = 'block';
 }
@@ -1676,6 +1698,12 @@ async function submitSignup() {
   var serviceEl = document.getElementById('suService');
   var service  = serviceEl && serviceEl.value && serviceEl.value.indexOf('Select') !== 0 ? serviceEl.value : '';
 
+  var termsEl = document.getElementById('suTerms');
+  if (termsEl && !termsEl.checked) {
+    showSuError('Please agree to the Terms of Service to continue.');
+    return;
+  }
+  
   if (!bizName || !email || !password) {
     showSignupError('Please fill in your business name, email and password.');
     return;
@@ -1711,7 +1739,7 @@ async function submitSignup() {
     });
     if (signUpRes.error) {
       showSignupError(signUpRes.error.message);
-      if (btn) { btn.disabled = false; btn.textContent = 'Create free listing →'; }
+      if (btn) { btn.disabled = false; btn.textContent = 'Create free listing ���'; }
       return;
     }
 
