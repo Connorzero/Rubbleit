@@ -1637,10 +1637,21 @@ async function submitJob() {
     var selects = document.querySelectorAll('#pjStep1 select');
     var inputs = document.querySelectorAll('#pjStep1 input');
     var val = function (sel) { var el = document.querySelector(sel); return el ? el.value : ''; };
+    var postcode = inputs[0] ? inputs[0].value.trim() : '';
+    // Location lets the job reach businesses whose coverage area includes it.
+    var geo = null;
+    try {
+      var geoRes = await fetch('https://api.postcodes.io/postcodes/' + encodeURIComponent(postcode));
+      if (geoRes.ok) geo = (await geoRes.json()).result;
+    } catch (geoErr) { console.warn('Postcode lookup failed:', geoErr); }
+    if (!geo) { showToast("We couldn't find that postcode. Please check it and try again."); return; }
     var result = await window._sbClient.rpc('post_job', {
+      p_lat: geo.latitude,
+      p_lng: geo.longitude,
+      p_town: geo.admin_district || geo.parish || null,
       p_waste_type: selects[0] ? selects[0].value : '',
       p_volume: selects[1] ? selects[1].value : '',
-      p_postcode: inputs[0] ? inputs[0].value : '',
+      p_postcode: geo.postcode,
       p_timing: selects[2] ? selects[2].value : '',
       p_details: val('#pjStep2 textarea'),
       p_budget: val('#pjStep2 select'),
