@@ -230,6 +230,36 @@
   .contact-reveal .contact-item { font-size: 14px; color: var(--charcoal); }
   .contact-reveal .contact-item strong { color: var(--green); }
   .blurred { filter: blur(5px); user-select: none; pointer-events: none; color: var(--mid); font-size: 13px; }
+  .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; }
+  .coverage-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; background: var(--white); border: 1px solid var(--border); border-radius: 12px; padding: 16px 20px; margin-bottom: 16px; }
+  .coverage-copy { flex: 1 1 220px; }
+  .coverage-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.6px; color: var(--green); }
+  .coverage-status { font-size: 14px; color: var(--mid); margin-top: 2px; }
+  .coverage-input { padding: 10px 12px; border: 1.5px solid var(--border); border-radius: 8px; font-family: 'DM Sans', sans-serif; font-size: 14px; background: var(--white); color: var(--charcoal); }
+  #coveragePostcode { width: 130px; text-transform: uppercase; }
+  .lead-actions { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
+  .lead-note { font-size: 12px; color: var(--mid); text-align: right; }
+  .unlock-btn.secondary { background: transparent; color: var(--mid); border: 1.5px solid var(--border); }
+  .unlock-btn.secondary:hover { background: var(--sage-light); }
+  .unlock-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+  .lead-details { margin-top: 10px; font-size: 13px; color: var(--mid); line-height: 1.5; }
+  .quote-form { grid-column: 1 / -1; border-top: 1px solid var(--border); padding-top: 16px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+  .quote-form label { display: flex; flex-direction: column; gap: 6px; font-size: 13px; font-weight: 600; color: var(--charcoal); }
+  .quote-form .full { grid-column: 1 / -1; }
+  .quote-form input, .quote-form textarea { padding: 10px 12px; border: 1.5px solid var(--border); border-radius: 8px; font-family: 'DM Sans', sans-serif; font-size: 14px; font-weight: 400; color: var(--charcoal); background: var(--white); }
+  .quote-form textarea { min-height: 80px; resize: vertical; line-height: 1.5; }
+  .quote-form .price-field { position: relative; }
+  .quote-form .price-field span { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--mid); }
+  .quote-form .price-field input { padding-left: 26px; width: 100%; }
+  .quote-form-foot { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; }
+  .quote-form-foot .hint { font-size: 12px; color: var(--mid); }
+  .quote-form-foot .btns { display: flex; gap: 8px; }
+  @media (max-width: 640px) {
+    .lead-card { grid-template-columns: 1fr; }
+    .lead-actions { align-items: stretch; }
+    .lead-note { text-align: left; }
+    .quote-form { grid-template-columns: 1fr; }
+  }
 
   /* Listing editor */
   .listing-editor { display: grid; grid-template-columns: 1fr 320px; gap: 24px; }
@@ -488,7 +518,7 @@
   </div>
 </div>
 
-<!-- ═══════════════ DASHBOARD APP ═══════════════ -->
+<!-- ══��════════════ DASHBOARD APP ═══════════════ -->
 <div class="app" id="dashApp">
   <aside class="sidebar">
     <div class="sidebar-logo">
@@ -595,6 +625,21 @@
           </div>
           <button class="btn-lime membership-cta" style="width:auto;padding:12px 24px;" onclick="showPanel('credits')">Start free trial</button>
         </div>
+        <form class="coverage-bar" id="coverageForm" onsubmit="saveCoverage(event)">
+          <div class="coverage-copy">
+            <div class="coverage-label">Your coverage area</div>
+            <div class="coverage-status" id="coverageStatus">Set your base postcode to see jobs near you.</div>
+          </div>
+          <label class="sr-only" for="coveragePostcode">Base postcode</label>
+          <input id="coveragePostcode" class="coverage-input" placeholder="e.g. SW1A 1AA" autocomplete="postal-code" maxlength="8" required>
+          <label class="sr-only" for="coverageRadius">Radius</label>
+          <select id="coverageRadius" class="coverage-input">
+            <option value="5">5 miles</option><option value="10">10 miles</option>
+            <option value="15" selected>15 miles</option><option value="25">25 miles</option>
+            <option value="40">40 miles</option>
+          </select>
+          <button class="unlock-btn" type="submit" id="coverageSave">Save area</button>
+        </form>
         <div class="leads-list" id="leadsList">
           <!-- Populated by JS -->
         </div>
@@ -987,79 +1032,237 @@ async function loadBusinessData() {
   await loadLegacyCredit();
 }
 
-async function loadLeads() {
-  // Fetch the job feed WITHOUT customer contact columns — those are protected
-  // server-side and only handed back for leads this business has paid to unlock.
-  const { data: jobs } = await sb.from('jobs')
-    .select('id, created_at, waste_type, town, postcode, volume, timing, budget, details, status')
-    .order('created_at', { ascending: false }).limit(20);
-  if (!jobs || jobs.length === 0) return;
+const escHtml = (v) => String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const QUOTE_ERRORS = {
+  membership_required: 'You need an active membership or free trial to quote.',
+  no_coverage: 'Set your coverage area first.',
+  out_of_area: 'This job is outside your coverage area.',
+  unpaid_fee: 'You have an unpaid success fee. Update your card to keep quoting.',
+  job_full: 'This job already has the maximum number of quotes.',
+  job_not_found: 'This job is no longer available.',
+  already_quoted: 'You have already quoted on this job.',
+  claim_expired: 'Your hold on this job expired. Start a new quote.',
+  not_claimable: 'This quote can no longer be edited.',
+  not_withdrawable: 'This quote can no longer be withdrawn.',
+  invalid_price: 'Enter a price between £1 and £100,000.',
+  invalid_description: 'Describe what the price includes.',
+  invalid_date: 'Pick today or a future date.',
+  invalid_message: 'Your message is too long.',
+};
+let leadFeed = [];
+let wonContacts = {};
 
-  const { data: unlocks } = await sb.from('lead_unlocks').select('job_id').eq('business_id', currentUser.id);
-  const unlockedIds = new Set((unlocks || []).map(u => u.job_id));
-
-  // Pull contact details only for already-unlocked leads via a trusted function.
-  if (unlockedIds.size > 0) {
-    const { data: contacts } = await sb.rpc('my_unlocked_leads');
-    const byJob = {};
-    (contacts || []).forEach(c => { byJob[c.job_id] = c; });
-    jobs.forEach(j => { if (byJob[j.id]) Object.assign(j, byJob[j.id]); });
+async function loadCoverage() {
+  const { data } = await sb.from('businesses')
+    .select('base_postcode, coverage_radius_miles').eq('id', currentUser.id).maybeSingle();
+  if (data?.base_postcode) {
+    document.getElementById('coveragePostcode').value = data.base_postcode;
+    document.getElementById('coverageRadius').value = String(data.coverage_radius_miles || 15);
+    document.getElementById('coverageStatus').textContent =
+      `Showing jobs within ${data.coverage_radius_miles} miles of ${data.base_postcode}.`;
   }
-
-  const newCount = jobs.filter(j => !unlockedIds.has(j.id)).length;
-  if (newCount > 0) {
-    const badge = document.getElementById('newLeadsBadge');
-    badge.textContent = newCount; badge.style.display = 'inline-block';
-  }
-
-  document.getElementById('statNewLeads').textContent = newCount;
-  document.getElementById('statUnlocked').textContent = unlockedIds.size;
-  if (unlockedIds.size > 0) document.getElementById('check3').style.color = 'var(--green)';
-
-  const leadsHtml = jobs.map(job => renderLeadCard(job, unlockedIds.has(job.id))).join('');
-  document.getElementById('leadsList').innerHTML = leadsHtml || '<div style="text-align:center;padding:32px;color:var(--mid);">No job leads in your area yet.</div>';
-  document.getElementById('overviewLeads').innerHTML = jobs.slice(0,2).map(job => renderLeadCard(job, unlockedIds.has(job.id))).join('') || document.getElementById('overviewLeads').innerHTML;
+  return !!data?.base_postcode;
 }
 
-function renderLeadCard(job, isUnlocked) {
-  const timeAgo = getTimeAgo(job.created_at);
-  const isPremium = ['Commercial clearance','Hazardous waste'].includes(job.waste_type);
+async function saveCoverage(e) {
+  e.preventDefault();
+  const btn = document.getElementById('coverageSave');
+  const postcode = document.getElementById('coveragePostcode').value.trim().toUpperCase();
+  const radius = Number(document.getElementById('coverageRadius').value);
+  btn.disabled = true; btn.textContent = 'Saving…';
+  try {
+    const res = await fetch('https://api.postcodes.io/postcodes/' + encodeURIComponent(postcode));
+    const geo = await res.json();
+    if (!res.ok || !geo.result) { showToast("We couldn't find that postcode."); return; }
+    const { data, error } = await sb.rpc('set_coverage', {
+      p_postcode: geo.result.postcode, p_lat: geo.result.latitude, p_lng: geo.result.longitude, p_radius_miles: radius,
+    });
+    if (error || data?.error) { showToast('Could not save your coverage area. Please try again.'); return; }
+    showToast('Coverage area saved');
+    await loadLeads();
+  } catch (err) {
+    console.error('saveCoverage failed:', err);
+    showToast('Could not look up that postcode. Please try again.');
+  } finally {
+    btn.disabled = false; btn.textContent = 'Save area';
+  }
+}
+
+async function loadLeads() {
+  const hasCoverage = await loadCoverage();
+  const list = document.getElementById('leadsList');
+  if (!hasCoverage) {
+    list.innerHTML = '<div class="lead-empty" style="text-align:center;padding:32px;color:var(--mid);">Set your coverage area above to start seeing job leads.</div>';
+    return;
+  }
+
+  const { data: jobs, error } = await sb.rpc('job_feed');
+  if (error) console.error('job_feed failed:', error);
+  leadFeed = jobs || [];
+
+  const wonIds = leadFeed.filter(j => j.my_quote_status === 'accepted').map(j => j.id);
+  wonContacts = {};
+  if (wonIds.length) {
+    const { data: contacts } = await sb.from('job_contacts')
+      .select('job_id, customer_name, customer_email, customer_phone, address').in('job_id', wonIds);
+    (contacts || []).forEach(c => { wonContacts[c.job_id] = c; });
+  }
+
+  const openCount = leadFeed.filter(j => !j.my_quote_status).length;
+  const badge = document.getElementById('newLeadsBadge');
+  badge.textContent = openCount; badge.style.display = openCount ? 'inline-block' : 'none';
+  document.getElementById('statNewLeads').textContent = openCount;
+  document.getElementById('statUnlocked').textContent = wonIds.length;
+  if (wonIds.length) document.getElementById('check3').style.color = 'var(--green)';
+
+  list.innerHTML = leadFeed.map(renderLeadCard).join('') ||
+    '<div style="text-align:center;padding:32px;color:var(--mid);">No open jobs in your area right now. New jobs appear here as customers post them.</div>';
+  const overview = document.getElementById('overviewLeads');
+  if (leadFeed.length) overview.innerHTML = leadFeed.slice(0, 2).map(renderLeadCard).join('');
+}
+
+function renderLeadAction(job) {
+  const id = job.id;
+  switch (job.my_quote_status) {
+    case 'accepted':
+      return '<button class="unlock-btn unlocked" disabled>✓ Won</button>';
+    case 'submitted':
+      return `<button class="unlock-btn unlocked" disabled>Quote sent</button>
+        <button class="unlock-btn secondary" onclick="withdrawQuote('${id}')">Withdraw</button>
+        <div class="lead-note">Waiting for the customer</div>`;
+    case 'claimed':
+      return `<button class="unlock-btn" onclick="openQuoteForm('${id}')">Finish quote</button>
+        <div class="lead-note">Your spot is held for now</div>`;
+    default:
+      return `<button class="unlock-btn" onclick="startQuote('${id}', this)">Submit quote</button>
+        <div class="lead-note">${job.spots_left} quote spot${job.spots_left === 1 ? '' : 's'} left</div>`;
+  }
+}
+
+function renderLeadCard(job) {
+  const won = job.my_quote_status === 'accepted';
+  const contact = wonContacts[job.id];
+  const place = job.town || job.postcode_district || 'Nearby';
+  const isPremium = ['Commercial clearance', 'Hazardous waste'].includes(job.waste_type);
   return `
-    <div class="lead-card ${isUnlocked ? '' : 'locked'}" id="lead-${job.id}">
+    <div class="lead-card ${won ? '' : 'locked'}" id="lead-${job.id}">
       <div>
-        <div class="lead-type">${job.waste_type || 'General waste'}</div>
-        <div class="lead-title">${job.waste_type || 'Waste removal'} — ${job.town || job.postcode || 'Nearby'}</div>
+        <div class="lead-type">${escHtml(job.waste_type || 'General waste')}</div>
+        <div class="lead-title">${escHtml(job.waste_type || 'Waste removal')} — ${escHtml(place)}</div>
         <div class="lead-meta">
-          <span>📍 ${job.postcode || 'Location withheld'}</span>
-          <span>📦 ${job.volume || 'Size not specified'}</span>
-          <span>🕒 ${job.timing || 'Flexible'}</span>
-          <span style="color:var(--mid)">${timeAgo}</span>
+          <span>📍 ${escHtml(job.postcode_district || 'Area hidden')}${job.distance_miles != null ? ` · ${job.distance_miles} mi away` : ''}</span>
+          <span>📦 ${escHtml(job.volume || 'Size not specified')}</span>
+          <span>🕒 ${escHtml(job.timing || 'Flexible')}</span>
+          <span>${getTimeAgo(job.created_at)}</span>
         </div>
         <div class="lead-tags">
-          <span class="lead-tag">${job.waste_type || 'General'}</span>
           ${isPremium ? '<span class="lead-tag premium">Premium job</span>' : ''}
-          ${job.budget && job.budget !== 'No preference' ? `<span class="lead-tag">Budget: ${job.budget}</span>` : ''}
+          ${job.budget && job.budget !== 'No preference' ? `<span class="lead-tag">Budget: ${escHtml(job.budget)}</span>` : ''}
         </div>
-        ${isUnlocked ? `
-          <div class="contact-reveal show" id="reveal-${job.id}">
-            <div style="font-size:12px;font-weight:700;color:var(--green);margin-bottom:8px;text-transform:uppercase;letter-spacing:0.6px;">Contact details</div>
+        ${job.details ? `<div class="lead-details">"${escHtml(job.details)}"</div>` : ''}
+        ${won && contact ? `
+          <div class="contact-reveal show">
+            <div style="font-size:12px;font-weight:700;color:var(--green);margin-bottom:8px;text-transform:uppercase;letter-spacing:0.6px;">Customer details</div>
             <div class="contact-row">
-              <div class="contact-item"><strong>Name:</strong> ${job.customer_name || '—'}</div>
-              <div class="contact-item"><strong>Phone:</strong> ${job.customer_phone || '—'}</div>
-              <div class="contact-item"><strong>Email:</strong> ${job.customer_email || '—'}</div>
+              <div class="contact-item"><strong>Name:</strong> ${escHtml(contact.customer_name || '—')}</div>
+              <div class="contact-item"><strong>Phone:</strong> ${escHtml(contact.customer_phone || '—')}</div>
+              <div class="contact-item"><strong>Email:</strong> ${escHtml(contact.customer_email || '—')}</div>
+              ${contact.address ? `<div class="contact-item"><strong>Address:</strong> ${escHtml(contact.address)}</div>` : ''}
             </div>
-            ${job.details ? `<div style="margin-top:10px;font-size:13px;color:var(--mid);">"${job.details}"</div>` : ''}
-          </div>` : `
-          <div class="contact-reveal" id="reveal-${job.id}">
-            <div class="blurred">07700 000000 · customer@email.com</div>
-          </div>`}
+          </div>` : ''}
       </div>
-      <div>
-        ${isUnlocked
-          ? '<button class="unlock-btn unlocked">✓ Won</button>'
-          : '<button class="unlock-btn" disabled title="Quoting on jobs is coming soon">Quoting opens soon</button>'}
-      </div>
+      <div class="lead-actions">${renderLeadAction(job)}</div>
+      <div class="quote-slot" id="quote-slot-${job.id}" style="display:contents"></div>
     </div>`;
+}
+
+async function startQuote(jobId, btn) {
+  btn.disabled = true; btn.textContent = 'Holding spot…';
+  const { data, error } = await sb.rpc('claim_quote_spot', { p_job_id: jobId });
+  if (error || data?.error) {
+    btn.disabled = false; btn.textContent = 'Submit quote';
+    showToast(QUOTE_ERRORS[data?.error] || 'Could not start a quote. Please try again.');
+    if (data?.error === 'membership_required') showPanel('credits');
+    return;
+  }
+  const job = leadFeed.find(j => j.id === jobId);
+  if (job) { job.my_quote_id = data.quote_id; job.my_quote_status = 'claimed'; job.claim_expires_at = data.expires_at; }
+  document.querySelectorAll(`#lead-${jobId} .lead-actions`).forEach(el => { el.innerHTML = renderLeadAction(job); });
+  openQuoteForm(jobId);
+}
+
+function openQuoteForm(jobId) {
+  const job = leadFeed.find(j => j.id === jobId);
+  const slot = document.querySelector(`#leadsList #quote-slot-${jobId}`);
+  if (!job || !slot) return;
+  showPanel('leads');
+  if (slot.innerHTML) { slot.querySelector('input')?.focus(); return; }
+  const today = new Date().toISOString().slice(0, 10);
+  const expires = job.claim_expires_at
+    ? `Your spot is held until ${new Date(job.claim_expires_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}.`
+    : 'Your spot is held for a limited time.';
+  slot.innerHTML = `
+    <form class="quote-form" onsubmit="submitQuote(event, '${jobId}')">
+      <label>Your price
+        <div class="price-field"><span>£</span><input name="price" type="number" inputmode="decimal" min="1" max="100000" step="0.01" required placeholder="180"></div>
+      </label>
+      <label>Earliest date you can do it
+        <input name="date" type="date" min="${today}" value="${today}">
+      </label>
+      <label class="full">What the price includes
+        <textarea name="description" maxlength="2000" required placeholder="e.g. Collection of up to a car boot load, loading, licensed disposal and a waste transfer note."></textarea>
+      </label>
+      <label class="full">Message to the customer (optional)
+        <textarea name="message" maxlength="2000" placeholder="Anything the customer should know."></textarea>
+      </label>
+      <div class="quote-form-foot">
+        <span class="hint">${expires} You only pay 12% if the customer accepts.</span>
+        <div class="btns">
+          <button type="button" class="unlock-btn secondary" onclick="closeQuoteForm('${jobId}')">Cancel</button>
+          <button type="submit" class="unlock-btn">Send quote</button>
+        </div>
+      </div>
+    </form>`;
+  slot.querySelector('input[name=price]').focus();
+}
+
+function closeQuoteForm(jobId) {
+  const slot = document.querySelector(`#leadsList #quote-slot-${jobId}`);
+  if (slot) slot.innerHTML = '';
+}
+
+async function submitQuote(e, jobId) {
+  e.preventDefault();
+  const job = leadFeed.find(j => j.id === jobId);
+  const form = e.target;
+  const btn = form.querySelector('button[type=submit]');
+  const pence = Math.round(parseFloat(form.price.value) * 100);
+  const message = form.message.value.trim();
+  btn.disabled = true; btn.textContent = 'Sending…';
+  const { data, error } = await sb.rpc('submit_quote', {
+    p_quote_id: job.my_quote_id,
+    p_price_pence: pence,
+    p_description: form.description.value.trim(),
+    p_available_date: form.date.value || null,
+    p_message: message || null,
+  });
+  if (error || data?.error) {
+    btn.disabled = false; btn.textContent = 'Send quote';
+    showToast(QUOTE_ERRORS[data?.error] || 'Could not send your quote. Please try again.');
+    if (data?.error === 'claim_expired') await loadLeads();
+    return;
+  }
+  showToast('Quote sent to the customer');
+  await loadLeads();
+}
+
+async function withdrawQuote(jobId) {
+  const job = leadFeed.find(j => j.id === jobId);
+  if (!job || !confirm('Withdraw your quote? Your spot will be freed for another business.')) return;
+  const { data, error } = await sb.rpc('withdraw_quote', { p_quote_id: job.my_quote_id });
+  if (error || data?.error) { showToast(QUOTE_ERRORS[data?.error] || 'Could not withdraw your quote.'); return; }
+  showToast('Quote withdrawn');
+  await loadLeads();
 }
 
 // Only credits bought in old packs count as money owed back; free sign-up
