@@ -1135,7 +1135,7 @@ function renderLeadAction(job) {
         <div class="lead-note">Your spot is held for now</div>`;
     default:
       return `<button class="unlock-btn" onclick="startQuote('${id}', this)">Submit quote</button>
-        <div class="lead-note">${job.spots_left} of 3 spots left</div>`;
+        <div class="lead-note">${job.spots_left} quote spot${job.spots_left === 1 ? '' : 's'} left</div>`;
   }
 }
 
