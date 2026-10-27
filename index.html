@@ -143,17 +143,25 @@
   .btn-primary:hover { background: var(--brick-dark); }
   .search-tabs {
     display: flex; gap: 4px;
-    background: var(--cream); border-radius: 8px; padding: 4px;
-    margin-bottom: 20px; width: fit-content;
+    background: var(--cream); border: 1px solid var(--border);
+    border-radius: 10px; padding: 4px;
+    margin-bottom: 20px; width: 100%; max-width: 420px;
   }
   .search-tab {
-    padding: 7px 18px; border-radius: 6px; border: none;
-    font-family: 'DM Sans', sans-serif; font-size: 14px; font-weight: 500;
-    cursor: pointer; background: transparent; color: var(--mid);
-    transition: all 0.15s;
+    flex: 1; padding: 10px 16px; border-radius: 7px; border: none;
+    font-family: 'DM Sans', sans-serif; font-size: 15px; font-weight: 600;
+    cursor: pointer; background: transparent; color: var(--charcoal);
+    opacity: 0.6; transition: background 0.15s, color 0.15s, opacity 0.15s;
   }
+  .search-tab:hover { opacity: 1; background: var(--white); }
+  .search-tab:focus-visible { outline: 2px solid var(--charcoal); outline-offset: 2px; }
   .search-tab.active {
-    background: var(--charcoal); color: var(--white);
+    background: var(--charcoal); color: var(--white); opacity: 1;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.15);
+  }
+  .search-hint {
+    font-size: 14px; color: var(--mid); line-height: 1.5;
+    margin: -8px 0 16px;
   }
 
   /* ── HOW IT WORKS ── */
@@ -790,18 +798,19 @@
     <p>Find trusted, local waste removalists in seconds — or post your job and let them come to you.</p>
 
     <div class="search-card">
-      <div class="search-tabs">
-        <button class="search-tab" onclick="setSearchTab(this, 'find')">Find a removalist</button>
-        <button class="search-tab active" onclick="setSearchTab(this, 'post')">Post a job</button>
+      <div class="search-tabs" role="tablist" aria-label="How would you like to start?">
+        <button class="search-tab" role="tab" aria-selected="false" aria-controls="searchPanel" data-tab="find" onclick="setSearchTab(this, 'find')">Find a removalist</button>
+        <button class="search-tab active" role="tab" aria-selected="true" aria-controls="searchPanel" data-tab="post" onclick="setSearchTab(this, 'post')">Post a job</button>
       </div>
-      <div id="findTab" style="display:none;">
+      <div id="searchPanel" role="tabpanel">
+        <p class="search-hint" id="searchHint">Post once and get quotes from local removalists.</p>
         <div class="search-row">
           <div class="field">
-            <label>Postcode or Town</label>
+            <label for="searchPostcode">Postcode or Town</label>
             <input type="text" placeholder="e.g. OX1 or Oxford" id="searchPostcode">
           </div>
           <div class="field">
-            <label>Waste Type</label>
+            <label for="searchType">Waste Type</label>
             <select id="searchType">
               <option value="">All types</option>
               <option>Skip hire</option>
@@ -813,27 +822,7 @@
               <option>Electronics disposal</option>
             </select>
           </div>
-          <button class="btn-primary" onclick="doSearch()">Search</button>
-        </div>
-      </div>
-      <div id="postTab">
-        <div class="search-row">
-          <div class="field">
-            <label>Your Postcode</label>
-            <input type="text" placeholder="e.g. OX1 4JE">
-          </div>
-          <div class="field">
-            <label>What needs removing?</label>
-            <select>
-              <option value="" disabled selected>Select waste type</option>
-              <option>Skip hire</option>
-              <option>Rubbish clearance</option>
-              <option>Construction waste</option>
-              <option>Garden waste</option>
-              <option>Commercial clearance</option>
-            </select>
-          </div>
-          <button class="btn-primary" onclick="openModal('postJobModal')">Get Quotes</button>
+          <button class="btn-primary" id="searchAction" onclick="runSearchAction()">Get Quotes</button>
         </div>
       </div>
     </div>
@@ -1532,11 +1521,23 @@ function showPage(page) {
 }
 
 // ── SEARCH TABS ──
+var currentSearchTab = 'post';
 function setSearchTab(el, tab) {
-  document.querySelectorAll('.search-tab').forEach(function(t) { t.classList.remove('active'); });
-  el.classList.add('active');
-  document.getElementById('findTab').style.display = tab === 'find' ? 'block' : 'none';
-  document.getElementById('postTab').style.display = tab === 'post' ? 'block' : 'none';
+  currentSearchTab = tab;
+  document.querySelectorAll('.search-tab').forEach(function(t) {
+    var isActive = t === el;
+    t.classList.toggle('active', isActive);
+    t.setAttribute('aria-selected', isActive ? 'true' : 'false');
+  });
+  document.getElementById('searchAction').textContent = tab === 'find' ? 'Search' : 'Get Quotes';
+  document.getElementById('searchHint').textContent = tab === 'find'
+    ? 'Browse trusted local removalists and contact them directly.'
+    : 'Post once and get quotes from local removalists.';
+}
+
+function runSearchAction() {
+  if (currentSearchTab === 'find') doSearch();
+  else openModal('postJobModal');
 }
 
 // ── SEARCH ──
