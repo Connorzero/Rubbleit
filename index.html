@@ -776,7 +776,7 @@
     <li><a href="#" onclick="showPage('results'); return false;">Find Removalists</a></li>
     <li><a href="#" onclick="openModal('postJobModal'); return false;">Post a Job</a></li>
     <li><a href="#" onclick="showPage('signup'); return false;">List Your Business</a></li>
-    <li><a href="/rubble-dashboard.html" class="nav-cta">Business login →</a></li>
+    <li><a href="/dashboard" class="nav-cta">Business login →</a></li>
   </ul>
   <button class="hamburger" onclick="toggleMobileNav()" id="hamburger" aria-label="Menu">
     <span></span><span></span><span></span>
@@ -787,7 +787,7 @@
   <a onclick="showPage('results'); toggleMobileNav()">Find Removalists</a>
   <a onclick="openModal('postJobModal'); toggleMobileNav()">Post a Job</a>
   <a onclick="showPage('signup'); toggleMobileNav()">List Your Business</a>
-  <a href="/rubble-dashboard.html">Business Login →</a>
+  <a href="/dashboard">Business Login →</a>
 </div>
 
 <div id="page-home" class="page active">
@@ -976,7 +976,7 @@
         <ul>
           <li><a onclick="showPage('signup')">Free Listing</a></li>
           <li><a onclick="showPage('signup')">Membership</a></li>
-          <li><a href="/rubble-dashboard.html">Business Login</a></li>
+          <li><a href="/dashboard">Business Login</a></li>
         </ul>
       </div>
       <div class="footer-col">
@@ -1306,7 +1306,7 @@
         <div class="success-icon">📧</div>
         <h3>Confirm your email</h3>
         <p>Your account has been created and your details are saved. We&apos;ve sent a confirmation link to <strong id="suSuccessEmail">your email address</strong>. Click it to verify your email, then sign in to finish your listing — you won&apos;t need to re-enter anything.</p>
-        <a href="/rubble-dashboard.html" class="btn-primary" style="margin-top:24px;display:inline-block;text-decoration:none;">Go to sign in →</a>
+        <a href="/dashboard" class="btn-primary" style="margin-top:24px;display:inline-block;text-decoration:none;">Go to sign in →</a>
         <button class="btn-outline" style="margin-top:12px;" onclick="showPage('home')">Back to homepage</button>
       </div>
     </div>
@@ -1739,7 +1739,7 @@ async function submitSignup() {
       email: email,
       password: password,
       options: {
-        emailRedirectTo: window.location.origin + '/rubble-dashboard.html',
+        emailRedirectTo: window.location.origin + '/dashboard',
         data: {
           business_name: bizName,
           contact_name: name,

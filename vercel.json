@@ -1,0 +1,7 @@
+{
+  "cleanUrls": true,
+  "redirects": [
+    { "source": "/rubble-dashboard.html", "destination": "/dashboard", "permanent": true },
+    { "source": "/rubble-dashboard", "destination": "/dashboard", "permanent": true }
+  ]
+}

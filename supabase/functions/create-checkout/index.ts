@@ -74,8 +74,8 @@ Deno.serve(async (req) => {
       await supabase.from("businesses").update({ stripe_customer_id: customerId }).eq("id", user.id);
     }
 
-    const successUrl = `${base}/rubble-dashboard.html?checkout=success`;
-    const cancelUrl = `${base}/rubble-dashboard.html?checkout=cancelled`;
+    const successUrl = `${base}/dashboard?checkout=success`;
+    const cancelUrl = `${base}/dashboard?checkout=cancelled`;
 
     if (packId === "membership") {
       if (biz.subscription_status === "active" || biz.subscription_status === "trialing" || biz.subscription_status === "past_due") {
