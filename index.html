@@ -1511,14 +1511,48 @@
 <script>
 
 // ── PAGE ROUTING ──
-function showPage(page) {
+// Each in-page view gets its own browser history entry so the back button
+// returns to the previous Rubble view instead of leaving the site.
+function showPage(page, opts) {
+  opts = opts || {};
   var target = document.getElementById('page-' + page);
   if (!target) { console.warn('Page not found:', page); return; }
+  var alreadyActive = target.classList.contains('active');
   document.querySelectorAll('.page').forEach(function(p) { p.classList.remove('active'); });
   target.classList.add('active');
   window.scrollTo(0, 0);
   if (page === 'results') setTimeout(renderResults, 100);
+  if (opts.fromHistory) return;
+  var state = { page: page, listingId: opts.listingId || null };
+  var url = page === 'home' ? window.location.pathname : '#' + page + (state.listingId ? '/' + state.listingId : '');
+  var current = history.state || {};
+  if (alreadyActive && current.page === page && current.listingId === state.listingId) {
+    history.replaceState(state, '', url);
+  } else {
+    history.pushState(state, '', url);
+  }
 }
+
+window.addEventListener('popstate', function(e) {
+  var state = e.state || { page: 'home' };
+  document.querySelectorAll('.modal-overlay.open').forEach(function(m) { m.classList.remove('open'); });
+  if (state.page === 'listing' && state.listingId) {
+    showListingById(state.listingId, { fromHistory: true });
+  } else {
+    showPage(state.page || 'home', { fromHistory: true });
+  }
+});
+
+(function initHistory() {
+  var hash = window.location.hash.replace('#', '');
+  var page = hash.split('/')[0];
+  if (page && page !== 'listing' && document.getElementById('page-' + page)) {
+    history.replaceState({ page: page, listingId: null }, '', '#' + page);
+    showPage(page, { fromHistory: true });
+  } else {
+    history.replaceState({ page: 'home', listingId: null }, '', window.location.pathname + window.location.search);
+  }
+})();
 
 // ── SEARCH TABS ──
 var currentSearchTab = 'post';
@@ -1969,9 +2003,10 @@ function renderCategoryChip() {
   }
 }
 
-async function showListingById(id) {
+async function showListingById(id, opts) {
+  opts = opts || {};
   var l = allDbListings.find(function(x) { return String(x.id) === String(id); });
-  if (!l) return;
+  if (!l) { if (opts.fromHistory) showPage('results', { fromHistory: true }); return; }
   document.getElementById('listingBizName').textContent = l.name;
   document.getElementById('listingTitle').textContent = l.name;
   document.getElementById('listingLocation').textContent = '📍 ' + (l.coverage.slice(0,3).join(', ') || l.postcode || 'Local area');
@@ -1989,7 +2024,7 @@ async function showListingById(id) {
   window._currentListingName = l.name;
   window._currentListingPhone = l.phone || '';
   renderGallery(l.photos || [], l.name);
-  showPage('listing');
+  showPage('listing', { listingId: l.id, fromHistory: opts.fromHistory });
 }
 
 // ── LISTING GALLERY ──
