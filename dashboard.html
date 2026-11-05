@@ -885,7 +885,7 @@ async function handleSignup() {
     email,
     password,
     options: {
-      emailRedirectTo: window.location.origin + '/rubble-dashboard.html',
+      emailRedirectTo: window.location.origin + '/dashboard',
       data: { business_name: bizName, contact_name: name, phone }
     }
   });

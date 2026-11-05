@@ -48,7 +48,7 @@ Deno.serve(async (req) => {
     const session = await stripe.billingPortal.sessions.create({
       customer: biz.stripe_customer_id,
       configuration,
-      return_url: `${base}/rubble-dashboard.html?portal=return`,
+      return_url: `${base}/dashboard?portal=return`,
     });
     return json({ url: session.url });
   } catch (err) {
